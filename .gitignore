@@ -1,0 +1,64 @@
+.gradle/
+build/
+run/
+# Owner field measurements and their analyses; kept outside build/ so builds keep them.
+/field-data/
+.kotlin/
+out/
+bin/
+
+# Local development settings
+.idea/
+.vscode/
+*.iml
+__pycache__/
+node_modules/
+*.py[cod]
+
+# Native fixtures and local validation; pure-logic unit tests in src/test are public.
+/src/gametest/
+/src/integrationTest/
+/src/testFixtures/
+/tests/
+/qa/
+test-results/
+coverage/
+
+# Reports, recordings and temporary files
+reports/
+profiler/
+tmp/
+temp/
+*.log
+*.jfr
+*.hprof
+hs_err_*.log
+replay_pid*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*.zip
+*.rar
+*.7z
+*.jar
+
+# Local credentials and OS metadata
+.env
+.env.*
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Markdown is local unless explicitly selected below
+*.[mM][dD]
+!/README.md
+
+# Explicitly selected public documentation; local working notes remain ignored.
+!/.github/PULL_REQUEST_TEMPLATE.md
+
+# Local tooling remains outside Git.
+/tools/
+
+# Keep the Gradle wrapper required for builds
+!gradle/wrapper/gradle-wrapper.jar
