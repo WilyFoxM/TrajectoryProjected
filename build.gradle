@@ -67,6 +67,25 @@ loom {
             sourceSet sourceSets.main
         }
     }
+    runs {
+        client {
+            // Development runs record predicted against real arrows (trajectory-reports/).
+            vmArg "-Dtrajectory.devlog=true"
+        }
+    }
+}
+
+// Native client fixtures live in a separate local mod (src/gametest), outside the release jar.
+fabricApi.configureTests {
+    createSourceSet = true
+    modId = "trajectory_projected_test"
+    enableGameTests = false
+    enableClientGameTests = true
+    eula = true
+}
+
+tasks.named('runClientGameTest') {
+    jvmArgs '-Dtrajectory.devlog=true'
 }
 
 apply from: 'gradle/quality.gradle'
