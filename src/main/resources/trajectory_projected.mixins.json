@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "ru.wilyfox.trajectory.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractArrowAccessor",
+    "LocalPlayerAccessor",
+    "LocalPlayerSendPositionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
