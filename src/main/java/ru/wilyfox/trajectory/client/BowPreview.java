@@ -21,19 +21,31 @@ public final class BowPreview {
   private static final int MAX_TICKS = 400;
 
   private static Prediction current;
+  private static Prediction previous;
 
   private BowPreview() {}
 
+  /** The prediction for a release on the next tick; this is what the server will fire. */
   public static Prediction current() {
     return current;
   }
 
+  /**
+   * The prediction one tick earlier, for drawing: frames between two ticks blend from it to {@link
+   * #current()} the way vanilla blends the camera, so the line moves with the player instead of
+   * jumping once per tick. {@code null} on the first tick of a draw.
+   */
+  static Prediction previous() {
+    return previous;
+  }
+
   /** Runs at the end of every client tick. */
   public static void tick(Minecraft minecraft) {
-    Prediction previous = current;
+    Prediction last = current;
     current = compute(minecraft.player, minecraft.level);
-    if (previous != null && current == null) {
-      ShotLog.released(previous);
+    previous = current == null ? null : last;
+    if (last != null && current == null) {
+      ShotLog.released(last);
     }
   }
 

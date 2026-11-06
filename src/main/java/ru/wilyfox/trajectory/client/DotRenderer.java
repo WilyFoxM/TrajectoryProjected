@@ -1,9 +1,12 @@
 package ru.wilyfox.trajectory.client;
 
+import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
@@ -14,18 +17,23 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import ru.wilyfox.trajectory.sim.Face;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
 
 /**
- * Draws the predicted path as evenly spaced round dots: camera-facing quads whose fragment shader
- * cuts an anti-aliased disc. First in-game version; spacing, size and color are expected to change
- * after looking at it in the game.
+ * Draws the predicted path as round dots: camera-facing quads whose fragment shader cuts an
+ * anti-aliased disc. Dots behind terrain are drawn a second time, fainter and outlined.
+ *
+ * <p>Dots sit on a fixed lattice along the path, measured from the spawn point, and every lattice
+ * point decides for itself whether it is shown, from how densely the path is packed on screen at
+ * that point (like mip levels: every 2nd, 4th, 8th point...). A point between two levels fades
+ * instead of popping, and moving the camera never shifts the dots along the path.
  */
 final class DotRenderer {
   private static final String MOD_ID = "trajectory_projected";
 
-  private static final RenderPipeline PIPELINE =
+  private static final RenderPipeline VISIBLE =
       RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
@@ -34,169 +42,291 @@ final class DotRenderer {
           .withCull(false)
           .build();
 
+  /** Passes only where terrain is in front of the dot (the depth buffer is reversed). */
+  private static final RenderPipeline HIDDEN =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_hidden"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot_hidden"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withCull(false)
+          .build();
+
   private static final RenderType DOTS =
       RenderType.create(
-          MOD_ID + "_dots", RenderSetup.builder(PIPELINE).sortOnUpload().createRenderSetup());
+          MOD_ID + "_dots", RenderSetup.builder(VISIBLE).sortOnUpload().createRenderSetup());
+
+  private static final RenderType DOTS_HIDDEN =
+      RenderType.create(
+          MOD_ID + "_dots_hidden", RenderSetup.builder(HIDDEN).sortOnUpload().createRenderSetup());
 
   /** {@code f6f7eb} from the palette. */
   private static final int COLOR_RGB = 0xF6F7EB;
 
-  /** Candidate positions along the path; dots are picked from them by on-screen spacing. */
-  private static final double STEP = 0.1;
+  /** Distance between lattice points along the path, in blocks. */
+  private static final double LATTICE = 0.25;
 
-  private static final float DOT_RADIUS = 0.04F;
-  private static final float END_RADIUS = 0.11F;
+  /** Highest thinning level: at most every 64th lattice point. */
+  private static final int MAX_LEVEL = 6;
+
+  /**
+   * Required center-to-center distance between shown dots on screen, in dot diameters: 1.0 would
+   * make them touch.
+   */
+  private static final double GAP = 1.6;
+
+  private static final double DOT_RADIUS = 0.04;
 
   /** Dot radius on screen, in pixels: far dots never get smaller, near ones never bigger. */
   private static final double MIN_RADIUS_PX = 1.5;
 
   private static final double MAX_RADIUS_PX = 3.2;
 
-  private static final double MIN_END_RADIUS_PX = 4.5;
+  /** The hit marker shrinks with distance but stays this much larger than a dot beside it. */
+  private static final double END_RADIUS = 0.13;
 
-  /** Dots fainter than this are not drawn and do not take up space. */
-  private static final double MIN_FADE = 0.15;
+  private static final double END_MIN_RADIUS_PX = 2.8;
+  private static final double END_MAX_RADIUS_PX = 8.0;
+  private static final double END_OVER_DOT = 1.8;
+  private static final double LIFT = 1.25;
 
-  /**
-   * Center-to-center distance between neighbouring dots on screen, in units of the two radii: 1.0
-   * would make them touch. Spacing by screen angle keeps the dots apart where the path runs away
-   * from the camera.
-   */
-  private static final double GAP = 1.6;
+  /** Near the camera the line fades in over these distances, so it does not cover the crosshair. */
+  private static final double NEAR_FADE_START = 1.0;
 
-  /** Dots closer than this to the camera are hidden; they fade in over the next blocks. */
-  private static final double FADE_START = 1.0;
+  private static final double NEAR_FADE_END = 2.5;
 
-  private static final double FADE_END = 2.5;
+  /** Far away the line dims a little, down to {@link #FAR_ALPHA}, without disappearing. */
+  private static final double FAR_FADE_START = 48.0;
+
+  private static final double FAR_FADE_END = 120.0;
+  private static final double FAR_ALPHA = 0.45;
+
+  private static final int MAX_ALPHA = 235;
 
   private DotRenderer() {}
 
   static void collect(LevelRenderContext context) {
-    BowPreview.Prediction prediction = BowPreview.current();
-    if (prediction == null) {
+    BowPreview.Prediction current = BowPreview.current();
+    if (current == null) {
       return;
     }
+    BowPreview.Prediction previous = BowPreview.previous();
+    Minecraft minecraft = Minecraft.getInstance();
+    float partial = minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+
     CameraRenderState camera = context.levelState().cameraRenderState;
-    Vec3 cam = camera.pos;
-    Vector3f up = camera.orientation.transform(new Vector3f(0.0F, 1.0F, 0.0F));
-    Vector3f left = camera.orientation.transform(new Vector3f(-1.0F, 0.0F, 0.0F));
     // Pixels per radian near the screen center: projection m11 is 1 / tan(fov / 2).
     double pixelsPerRadian =
-        camera.projectionMatrix.m11() * Minecraft.getInstance().getWindow().getHeight() / 2.0;
-    double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
-    double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
-    double minEndAngle = MIN_END_RADIUS_PX / pixelsPerRadian;
-    Trajectory path = prediction.path();
-    boolean hit = path.end() == Trajectory.End.BLOCK || path.end() == Trajectory.End.ENTITY;
+        camera.projectionMatrix.m11() * minecraft.getWindow().getHeight() / 2.0;
+    Vector3f up = camera.orientation.transform(new Vector3f(0.0F, 1.0F, 0.0F));
+    Vector3f left = camera.orientation.transform(new Vector3f(-1.0F, 0.0F, 0.0F));
 
-    PoseStack poseStack = context.poseStack();
-    context
-        .submitNodeCollector()
-        .submitCustomGeometry(
-            poseStack,
-            DOTS,
-            (pose, buffer) -> {
-              List<Vec3d> points = path.points();
-              double lastX = 0.0;
-              double lastY = 0.0;
-              double lastZ = 0.0;
-              double lastAngle = -1.0;
-              double carry = 0.0;
-              for (int i = 0; i + 1 < points.size(); i++) {
-                Vec3d a = points.get(i);
-                Vec3d b = points.get(i + 1);
-                double length = Math.sqrt(a.distanceToSqr(b));
-                double t = carry;
-                for (; t < length; t += STEP) {
-                  double f = t / length;
-                  double dx = a.x() + (b.x() - a.x()) * f - cam.x;
-                  double dy = a.y() + (b.y() - a.y()) * f - cam.y;
-                  double dz = a.z() + (b.z() - a.z()) * f - cam.z;
-                  double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                  if (fade(distance) < MIN_FADE) {
-                    continue;
-                  }
-                  double angle = Math.clamp(DOT_RADIUS / distance, minAngle, maxAngle);
-                  double ux = dx / distance;
-                  double uy = dy / distance;
-                  double uz = dz / distance;
-                  if (lastAngle >= 0.0) {
-                    double cx = ux - lastX;
-                    double cy = uy - lastY;
-                    double cz = uz - lastZ;
-                    double chord = Math.sqrt(cx * cx + cy * cy + cz * cz);
-                    if (chord < GAP * (angle + lastAngle)) {
-                      continue;
-                    }
-                  }
-                  dot(pose, buffer, up, left, dx, dy, dz, distance, angle);
-                  lastX = ux;
-                  lastY = uy;
-                  lastZ = uz;
-                  lastAngle = angle;
-                }
-                carry = t - length;
-              }
-              if (hit) {
-                Vec3d end = path.last();
-                double dx = end.x() - cam.x;
-                double dy = end.y() - cam.y;
-                double dz = end.z() - cam.z;
-                double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (distance >= FADE_START) {
-                  double angle = Math.max(END_RADIUS / distance, minEndAngle);
-                  dot(pose, buffer, up, left, dx, dy, dz, distance, angle);
-                }
-              }
-            });
-  }
-
-  private static double fade(double distance) {
-    return Math.clamp((distance - FADE_START) / (FADE_END - FADE_START), 0.0, 1.0);
-  }
-
-  /** One camera-facing quad of angular radius {@code angle} at a camera-relative position. */
-  private static void dot(
-      PoseStack.Pose pose,
-      VertexConsumer buffer,
-      Vector3f up,
-      Vector3f left,
-      double dx,
-      double dy,
-      double dz,
-      double distance,
-      double angle) {
-    double fade = fade(distance);
-    if (fade <= 0.0) {
+    List<Vec3d> path =
+        previous == null
+            ? current.path().points()
+            : blend(previous.path().points(), current.path().points(), partial);
+    Trajectory.End end = current.path().end();
+    boolean hit = end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY;
+    List<Dot> dots = layout(path, hit, current.path().face(), camera.pos, pixelsPerRadian);
+    if (dots.isEmpty()) {
       return;
     }
-    float r = (float) (angle * distance);
-    float rx = (float) dx;
-    float ry = (float) dy;
-    float rz = (float) dz;
-    int alpha = (int) Math.round(235.0 * fade);
-    int color = (alpha << 24) | COLOR_RGB;
-    float ux = up.x() * r;
-    float uy = up.y() * r;
-    float uz = up.z() * r;
-    float lx = left.x() * r;
-    float ly = left.y() * r;
-    float lz = left.z() * r;
-    buffer
-        .addVertex(pose, rx + lx + ux, ry + ly + uy, rz + lz + uz)
-        .setUv(-1.0F, 1.0F)
-        .setColor(color);
-    buffer
-        .addVertex(pose, rx + lx - ux, ry + ly - uy, rz + lz - uz)
-        .setUv(-1.0F, -1.0F)
-        .setColor(color);
-    buffer
-        .addVertex(pose, rx - lx - ux, ry - ly - uy, rz - lz - uz)
-        .setUv(1.0F, -1.0F)
-        .setColor(color);
-    buffer
-        .addVertex(pose, rx - lx + ux, ry - ly + uy, rz - lz + uz)
-        .setUv(1.0F, 1.0F)
-        .setColor(color);
+
+    PoseStack poseStack = context.poseStack();
+    for (RenderType type : List.of(DOTS, DOTS_HIDDEN)) {
+      context
+          .submitNodeCollector()
+          .submitCustomGeometry(
+              poseStack, type, (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left)));
+    }
+  }
+
+  /** Point-by-point blend of two per-tick paths; the shorter one repeats its last point. */
+  static List<Vec3d> blend(List<Vec3d> from, List<Vec3d> to, double t) {
+    int size = Math.max(from.size(), to.size());
+    List<Vec3d> out = new ArrayList<>(size);
+    for (int i = 0; i < size; i++) {
+      Vec3d a = from.get(Math.min(i, from.size() - 1));
+      Vec3d b = to.get(Math.min(i, to.size() - 1));
+      out.add(a.add(b.subtract(a).scale(t)));
+    }
+    return out;
+  }
+
+  /** Camera-relative dots for a path, including the hit marker at its last point. */
+  static List<Dot> layout(
+      List<Vec3d> path, boolean hit, Face face, Vec3 cam, double pixelsPerRadian) {
+    List<Vec3d> lattice = resample(path);
+    double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
+    double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
+    int n = lattice.size();
+    double[][] rel = new double[n][];
+    for (int k = 0; k < n; k++) {
+      Vec3d p = lattice.get(k);
+      double dx = p.x() - cam.x;
+      double dy = p.y() - cam.y;
+      double dz = p.z() - cam.z;
+      double d = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 1.0E-6);
+      rel[k] = new double[] {dx, dy, dz, d, dx / d, dy / d, dz / d};
+    }
+
+    List<Dot> dots = new ArrayList<>();
+    Dot marker = hit && !path.isEmpty() ? marker(path.getLast(), face, cam, pixelsPerRadian) : null;
+    // Path dots under the marker would only show as clipped bits around it.
+    double clear = marker == null ? 0.0 : marker.radius() * 2.0;
+    Vec3d end = path.isEmpty() ? null : path.getLast();
+
+    for (int k = 0; k < n; k++) {
+      double[] p = rel[k];
+      double distance = p[3];
+      double base = fade(distance);
+      if (base <= 0.0) {
+        continue;
+      }
+      if (marker != null && lattice.get(k).distanceToSqr(end) < clear * clear) {
+        continue;
+      }
+      double angle = Math.clamp(DOT_RADIUS / distance, minAngle, maxAngle);
+      double[] q = rel[k + 1 < n ? k + 1 : Math.max(k - 1, 0)];
+      double sep = Math.sqrt(sq(p[4] - q[4]) + sq(p[5] - q[5]) + sq(p[6] - q[6]));
+      double ratio = GAP * 2.0 * angle / Math.max(sep, 1.0e-9);
+      double level = Math.clamp(Math.log(ratio) / Math.log(2.0), 0.0, MAX_LEVEL);
+      double alpha = base * levelAlpha(k, level);
+      if (alpha > 0.02) {
+        dots.add(new Dot(p[0], p[1], p[2], angle * distance, alpha));
+      }
+    }
+    if (marker != null) {
+      dots.add(marker);
+    }
+    return dots;
+  }
+
+  /**
+   * The hit marker: larger than a dot at the same distance, shrinking with distance, and lifted off
+   * the hit face by its radius so the surface does not cut it and send part of it to the hidden
+   * pass. {@code null} when it is too close to the camera to show.
+   */
+  private static Dot marker(Vec3d end, Face face, Vec3 cam, double pixelsPerRadian) {
+    double dx = end.x() - cam.x;
+    double dy = end.y() - cam.y;
+    double dz = end.z() - cam.z;
+    double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    double alpha = fade(distance);
+    if (alpha <= 0.0) {
+      return null;
+    }
+    double dotAngle =
+        Math.clamp(
+            DOT_RADIUS / distance,
+            MIN_RADIUS_PX / pixelsPerRadian,
+            MAX_RADIUS_PX / pixelsPerRadian);
+    double endAngle =
+        Math.clamp(
+            END_RADIUS / distance,
+            END_MIN_RADIUS_PX / pixelsPerRadian,
+            END_MAX_RADIUS_PX / pixelsPerRadian);
+    double radius = Math.max(endAngle, END_OVER_DOT * dotAngle) * distance;
+    // A little more than the radius: at grazing angles far away depth precision runs out.
+    double[] lift = normal(face);
+    double up = radius * LIFT;
+    return new Dot(dx + lift[0] * up, dy + lift[1] * up, dz + lift[2] * up, radius, alpha);
+  }
+
+  /**
+   * Visibility of lattice point {@code k} at a fractional thinning level: shown if {@code k} is a
+   * multiple of {@code 2^ceil(level)}, fading out if it is only a multiple of {@code
+   * 2^floor(level)}.
+   */
+  static double levelAlpha(int k, double level) {
+    int high = (int) Math.ceil(level);
+    int low = (int) Math.floor(level);
+    if (k % (1 << high) == 0) {
+      return 1.0;
+    }
+    if (k % (1 << low) == 0) {
+      return high - level;
+    }
+    return 0.0;
+  }
+
+  /** Points every {@link #LATTICE} blocks along the path, starting at its first point. */
+  static List<Vec3d> resample(List<Vec3d> path) {
+    List<Vec3d> out = new ArrayList<>();
+    double carry = 0.0;
+    for (int i = 0; i + 1 < path.size(); i++) {
+      Vec3d a = path.get(i);
+      Vec3d b = path.get(i + 1);
+      double length = Math.sqrt(a.distanceToSqr(b));
+      double t = carry;
+      for (; t < length; t += LATTICE) {
+        out.add(a.add(b.subtract(a).scale(t / length)));
+      }
+      carry = t - length;
+    }
+    return out;
+  }
+
+  /** Near fade-in times the gentle far dimming. */
+  private static double fade(double distance) {
+    double near =
+        Math.clamp((distance - NEAR_FADE_START) / (NEAR_FADE_END - NEAR_FADE_START), 0.0, 1.0);
+    double far =
+        Math.clamp((distance - FAR_FADE_START) / (FAR_FADE_END - FAR_FADE_START), 0.0, 1.0);
+    far = far * far * (3.0 - 2.0 * far);
+    return near * (1.0 - (1.0 - FAR_ALPHA) * far);
+  }
+
+  /** Outward normal of a block face; zero for entity hits. */
+  private static double[] normal(Face face) {
+    if (face == null) {
+      return new double[] {0.0, 0.0, 0.0};
+    }
+    return switch (face) {
+      case DOWN -> new double[] {0.0, -1.0, 0.0};
+      case UP -> new double[] {0.0, 1.0, 0.0};
+      case NORTH -> new double[] {0.0, 0.0, -1.0};
+      case SOUTH -> new double[] {0.0, 0.0, 1.0};
+      case WEST -> new double[] {-1.0, 0.0, 0.0};
+      case EAST -> new double[] {1.0, 0.0, 0.0};
+    };
+  }
+
+  private static double sq(double v) {
+    return v * v;
+  }
+
+  /** One dot: camera-relative center, world radius and opacity. */
+  record Dot(double dx, double dy, double dz, double radius, double alpha) {
+    void emit(PoseStack.Pose pose, VertexConsumer buffer, Vector3f up, Vector3f left) {
+      float r = (float) radius;
+      float rx = (float) dx;
+      float ry = (float) dy;
+      float rz = (float) dz;
+      int color = ((int) Math.round(MAX_ALPHA * alpha) << 24) | COLOR_RGB;
+      float ux = up.x() * r;
+      float uy = up.y() * r;
+      float uz = up.z() * r;
+      float lx = left.x() * r;
+      float ly = left.y() * r;
+      float lz = left.z() * r;
+      buffer
+          .addVertex(pose, rx + lx + ux, ry + ly + uy, rz + lz + uz)
+          .setUv(-1.0F, 1.0F)
+          .setColor(color);
+      buffer
+          .addVertex(pose, rx + lx - ux, ry + ly - uy, rz + lz - uz)
+          .setUv(-1.0F, -1.0F)
+          .setColor(color);
+      buffer
+          .addVertex(pose, rx - lx - ux, ry - ly - uy, rz - lz - uz)
+          .setUv(1.0F, -1.0F)
+          .setColor(color);
+      buffer
+          .addVertex(pose, rx - lx + ux, ry - ly + uy, rz - lz + uz)
+          .setUv(1.0F, 1.0F)
+          .setColor(color);
+    }
   }
 }
