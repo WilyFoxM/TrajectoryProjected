@@ -15,6 +15,8 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 import ru.wilyfox.trajectory.sim.Face;
@@ -133,6 +135,23 @@ final class DotRenderer {
 
   private static final int MAX_ALPHA = 235;
 
+  /**
+   * In first person the path leaves the eye almost along the view and collapses on screen. The
+   * drawn line therefore starts at the bow hand, this far right (or left for the other hand) and
+   * down from the eye, and merges into the real path over {@link #MERGE_DISTANCE} blocks of flight
+   * (at most {@link #MERGE_SHARE} of the path), so the hit point and the far part stay exact.
+   */
+  private static final double HAND_SIDE = 0.32;
+
+  private static final double HAND_DOWN = 0.26;
+  private static final double MERGE_DISTANCE = 12.0;
+  private static final double MERGE_SHARE = 0.6;
+
+  /** Hidden dots are drawn larger, so their outline is thick enough to read on any surface. */
+  private static final double HIDDEN_SCALE = 1.5;
+
+  private static final double HIDDEN_CROSS_SCALE = 1.2;
+
   /** The cross needs more room than a disc to read as a cross: thin arms, same visual weight. */
   private static final double CROSS_SCALE = 1.35;
 
@@ -176,21 +195,44 @@ final class DotRenderer {
     boolean hit = end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY;
     boolean living = current.livingTarget();
     double pulse = pulse(living);
-    Layout layout = layout(path, hit, current.path().face(), camera.pos, pixelsPerRadian, pulse);
+    Vec3d hand = Vec3d.ZERO;
+    if (minecraft.options.getCameraType().isFirstPerson()
+        && minecraft.getCameraEntity() == minecraft.player
+        && minecraft.player != null) {
+      HumanoidArm arm =
+          minecraft.player.getUsedItemHand() == InteractionHand.MAIN_HAND
+              ? minecraft.player.getMainArm()
+              : minecraft.player.getMainArm().getOpposite();
+      double side = arm == HumanoidArm.RIGHT ? HAND_SIDE : -HAND_SIDE;
+      hand =
+          new Vec3d(
+              -left.x() * side - up.x() * HAND_DOWN,
+              -left.y() * side - up.y() * HAND_DOWN,
+              -left.z() * side - up.z() * HAND_DOWN);
+    }
+    Layout layout =
+        layout(path, hit, current.path().face(), camera.pos, pixelsPerRadian, pulse, hand);
     if (layout.dots().isEmpty() && layout.marker() == null) {
       return;
     }
 
     PoseStack poseStack = context.poseStack();
-    submit(context, poseStack, DOTS, layout.dots(), up, left);
-    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left);
+    submit(context, poseStack, DOTS, layout.dots(), up, left, 1.0);
+    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left, HIDDEN_SCALE);
     if (layout.marker() != null) {
       Dot m = layout.marker();
       List<Dot> marker =
           List.of(
               living ? new Dot(m.dx(), m.dy(), m.dz(), m.radius() * CROSS_SCALE, m.alpha()) : m);
-      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left);
-      submit(context, poseStack, living ? CROSSES_HIDDEN : DOTS_HIDDEN, marker, up, left);
+      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left, 1.0);
+      submit(
+          context,
+          poseStack,
+          living ? CROSSES_HIDDEN : DOTS_HIDDEN,
+          marker,
+          up,
+          left,
+          living ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
     }
   }
 
@@ -200,14 +242,17 @@ final class DotRenderer {
       RenderType type,
       List<Dot> dots,
       Vector3f up,
-      Vector3f left) {
+      Vector3f left,
+      double scale) {
     if (dots.isEmpty()) {
       return;
     }
     context
         .submitNodeCollector()
         .submitCustomGeometry(
-            poseStack, type, (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left)));
+            poseStack,
+            type,
+            (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left, scale)));
   }
 
   /**
@@ -244,11 +289,18 @@ final class DotRenderer {
 
   /**
    * Lays out the dots of a path. {@code pulse} in [0, 1] dims and enlarges the path dots (not the
-   * marker).
+   * marker); {@code hand} is the offset of the drawn start from the real one (zero outside first
+   * person).
    */
   static Layout layout(
-      List<Vec3d> path, boolean hit, Face face, Vec3 cam, double pixelsPerRadian, double pulse) {
-    List<Vec3d> lattice = resample(path);
+      List<Vec3d> path,
+      boolean hit,
+      Face face,
+      Vec3 cam,
+      double pixelsPerRadian,
+      double pulse,
+      Vec3d hand) {
+    List<Vec3d> lattice = fromHand(resample(path), hand);
     double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
     double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
     int n = lattice.size();
@@ -346,6 +398,24 @@ final class DotRenderer {
     return 0.0;
   }
 
+  /**
+   * Moves the start of the lattice to the bow hand and blends it back into the real path: lattice
+   * point {@code k} lies {@code k * LATTICE} blocks along the flight.
+   */
+  static List<Vec3d> fromHand(List<Vec3d> lattice, Vec3d hand) {
+    if (hand.lengthSqr() == 0.0 || lattice.isEmpty()) {
+      return lattice;
+    }
+    double merge = Math.min(MERGE_DISTANCE, MERGE_SHARE * lattice.size() * LATTICE);
+    List<Vec3d> out = new ArrayList<>(lattice.size());
+    for (int k = 0; k < lattice.size(); k++) {
+      double t = Math.clamp(k * LATTICE / merge, 0.0, 1.0);
+      double weight = 1.0 - t * t * (3.0 - 2.0 * t);
+      out.add(weight > 0.0 ? lattice.get(k).add(hand.scale(weight)) : lattice.get(k));
+    }
+    return out;
+  }
+
   /** Points every {@link #LATTICE} blocks along the path, starting at its first point. */
   static List<Vec3d> resample(List<Vec3d> path) {
     List<Vec3d> out = new ArrayList<>();
@@ -391,8 +461,9 @@ final class DotRenderer {
 
   /** One dot: camera-relative center, world radius and opacity. */
   record Dot(double dx, double dy, double dz, double radius, double alpha) {
-    void emit(PoseStack.Pose pose, VertexConsumer buffer, Vector3f up, Vector3f left) {
-      float r = (float) radius;
+    void emit(
+        PoseStack.Pose pose, VertexConsumer buffer, Vector3f up, Vector3f left, double scale) {
+      float r = (float) (radius * scale);
       float rx = (float) dx;
       float ry = (float) dy;
       float rz = (float) dz;
