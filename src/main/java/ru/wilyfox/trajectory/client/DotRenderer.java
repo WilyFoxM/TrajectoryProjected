@@ -280,7 +280,10 @@ final class DotRenderer {
     boolean living = current.livingTarget();
     double pulse = pulse(living && config.livingPulse);
     Vec3d hand = Vec3d.ZERO;
+    // The crossbow is held in front of the view: a line from the side looks off, so its path starts
+    // at the eyes, as close hits do.
     if (config.firstPersonLeadIn
+        && current.weapon() != ShotPreview.Weapon.CROSSBOW
         && minecraft.options.getCameraType().isFirstPerson()
         && minecraft.getCameraEntity() == minecraft.player
         && minecraft.player != null) {
