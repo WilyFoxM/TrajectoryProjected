@@ -189,15 +189,22 @@ final class DotRenderer {
 
   /**
    * In first person the path leaves the eye almost along the view and collapses on screen. The
-   * drawn line therefore starts at the bow hand, this far right (or left for the other hand) and
-   * down from the eye, and merges into the real path over {@link #MERGE_DISTANCE} blocks of flight,
-   * so the hit point and the far part stay exact. Paths shorter than {@link #HAND_MIN_PATH} blocks
-   * are drawn plain; the arc fades in up to {@link #HAND_FULL_PATH}.
+   * drawn line therefore starts beside the eye, on the side of the hand holding the bow, and merges
+   * into the real path over {@link #MERGE_SHARE} of its length (at least {@link #MERGE_DISTANCE}
+   * blocks), so the hit point stays exact.
+   *
+   * <p>The arrow spawns 0.1 below the eye, so on screen the real path itself first rises towards
+   * the crosshair and then falls; a start below the view makes the line climb and turn sharply
+   * down. The start is therefore slightly above the eye ({@link #HAND_UP}): the line only ever
+   * descends, from the side into the fall, like an arc seen a little from the side. Paths shorter
+   * than {@link #HAND_MIN_PATH} blocks are drawn plain; the arc fades in up to {@link
+   * #HAND_FULL_PATH}.
    */
-  private static final double HAND_SIDE = 0.32;
+  private static final double HAND_SIDE = 0.2;
 
-  private static final double HAND_DOWN = 0.26;
+  private static final double HAND_UP = 0.14;
   private static final double MERGE_DISTANCE = 12.0;
+  private static final double MERGE_SHARE = 0.6;
 
   /** Dots moved by less than this share of the hand offset are drawn as the exact path. */
   private static final double ARC_EPSILON = 0.02;
@@ -269,9 +276,9 @@ final class DotRenderer {
       double side = arm == HumanoidArm.RIGHT ? HAND_SIDE : -HAND_SIDE;
       hand =
           new Vec3d(
-              -left.x() * side - up.x() * HAND_DOWN,
-              -left.y() * side - up.y() * HAND_DOWN,
-              -left.z() * side - up.z() * HAND_DOWN);
+              -left.x() * side + up.x() * HAND_UP,
+              -left.y() * side + up.y() * HAND_UP,
+              -left.z() * side + up.z() * HAND_UP);
     }
     Vec3d markerAt = path.isEmpty() ? null : path.getLast();
     if (end == Trajectory.End.ENTITY && markerAt != null) {
@@ -548,9 +555,9 @@ final class DotRenderer {
   }
 
   /**
-   * How far each lattice point is moved towards the bow hand, from 1 at the start to 0 at {@link
-   * #MERGE_DISTANCE}; all zero outside first person and for close hits. Lattice point {@code k}
-   * lies {@code k * LATTICE} blocks along the flight.
+   * How far each lattice point is moved towards the bow hand, from 1 at the start to 0 at the merge
+   * point; all zero outside first person and for close hits. Lattice point {@code k} lies {@code k
+   * * LATTICE} blocks along the flight.
    */
   static double[] handWeights(int size, Vec3d hand) {
     double[] weights = new double[size];
@@ -562,8 +569,12 @@ final class DotRenderer {
     double length = size * LATTICE;
     double strength = Math.clamp((length - HAND_MIN_PATH) / (HAND_FULL_PATH - HAND_MIN_PATH), 0, 1);
     strength = strength * strength * (3.0 - 2.0 * strength);
+    // Merging over most of the path lets the line join the real path where it already falls on
+    // screen, so it bends into the fall instead of meeting it at a corner. Far away the offset is
+    // a few pixels at most: it is divided by the distance.
+    double merge = Math.max(MERGE_DISTANCE, MERGE_SHARE * length);
     for (int k = 0; k < size && strength > 0.0; k++) {
-      double t = Math.clamp(k * LATTICE / MERGE_DISTANCE, 0.0, 1.0);
+      double t = Math.clamp(k * LATTICE / merge, 0.0, 1.0);
       weights[k] = strength * (1.0 - t * t * (3.0 - 2.0 * t));
     }
     return weights;
