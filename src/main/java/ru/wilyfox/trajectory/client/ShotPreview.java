@@ -1,0 +1,263 @@
+package ru.wilyfox.trajectory.client;
+
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.item.component.Fireworks;
+import net.minecraft.world.item.enchantment.ConditionalEffect;
+import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.effects.EnchantmentValueEffect;
+import org.apache.commons.lang3.mutable.MutableFloat;
+import ru.wilyfox.trajectory.config.TrajectoryConfig;
+import ru.wilyfox.trajectory.sim.BowShot;
+import ru.wilyfox.trajectory.sim.CrossbowShot;
+import ru.wilyfox.trajectory.sim.Flight;
+import ru.wilyfox.trajectory.sim.Launch;
+import ru.wilyfox.trajectory.sim.ShooterState;
+import ru.wilyfox.trajectory.sim.SpreadZone;
+import ru.wilyfox.trajectory.sim.Trajectory;
+
+/**
+ * Predicts what the player's weapon would fire, once per client tick: the bow being drawn, or a
+ * charged crossbow held in either hand.
+ *
+ * <p>The prediction is computed at the end of a client tick, after the movement packet. A bow
+ * release or a crossbow click is handled at the start of the next tick and sent before that tick's
+ * movement packet, so the server fires with the state used here.
+ */
+public final class ShotPreview {
+  /** Twenty seconds of flight; a full-power arrow lands well within it. */
+  private static final int MAX_TICKS = 400;
+
+  private static Prediction current;
+  private static Prediction previous;
+
+  private ShotPreview() {}
+
+  /** The prediction for a shot on the next tick; this is what the server will fire. */
+  public static Prediction current() {
+    return current;
+  }
+
+  /**
+   * The prediction one tick earlier, for drawing: frames between two ticks blend from it to {@link
+   * #current()} the way vanilla blends the camera, so the line moves with the player instead of
+   * jumping once per tick. {@code null} on the first tick of a prediction.
+   */
+  static Prediction previous() {
+    return previous;
+  }
+
+  /** Runs at the end of every client tick. */
+  public static void tick(Minecraft minecraft) {
+    Prediction last = current;
+    current = compute(minecraft.player, minecraft.level);
+    previous =
+        current == null
+                || last == null
+                || last.weapon() != current.weapon()
+                || last.shots().size() != current.shots().size()
+            ? null
+            : last;
+    if (last != null && last.weapon() == Weapon.BOW && current == null) {
+      ShotLog.released(last);
+    }
+  }
+
+  private static Prediction compute(LocalPlayer player, ClientLevel level) {
+    if (!TrajectoryConfig.get().enabled
+        || player == null
+        || level == null
+        || player.isPassenger()) {
+      return null;
+    }
+    // Only the vanilla bow and crossbow: other weapons may change the launch.
+    if (player.isUsingItem()) {
+      return player.getUseItem().is(Items.BOW)
+          ? bow(player, level, player.getUsedItemHand())
+          : null;
+    }
+    for (InteractionHand hand : InteractionHand.values()) {
+      ItemStack stack = player.getItemInHand(hand);
+      if (stack.is(Items.CROSSBOW)) {
+        ChargedProjectiles charged = stack.get(DataComponents.CHARGED_PROJECTILES);
+        if (charged != null && !charged.isEmpty()) {
+          return crossbow(player, level, hand, stack, charged);
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Prediction bow(LocalPlayer player, ClientLevel level, InteractionHand hand) {
+    ShooterState shooter = SentState.shooter(player);
+    if (shooter == null) {
+      return null;
+    }
+    int ticksHeld = player.getTicksUsingItem();
+    Launch launch = BowShot.launch(shooter, ticksHeld);
+    if (launch == null) {
+      return null;
+    }
+    Shot shot = shot(player, level, Flight.arrow(MAX_TICKS), launch);
+    return new Prediction(Weapon.BOW, hand, List.of(shot), ticksHeld, level.getGameTime());
+  }
+
+  private static Prediction crossbow(
+      LocalPlayer player,
+      ClientLevel level,
+      InteractionHand hand,
+      ItemStack crossbow,
+      ChargedProjectiles charged) {
+    ShooterState shooter = SentState.shooter(player);
+    if (shooter == null) {
+      return null;
+    }
+    List<ItemStack> items = charged.itemCopies();
+    List<CrossbowShot.Charge> charges = new ArrayList<>(items.size());
+    for (ItemStack item : items) {
+      charges.add(
+          item.is(Items.FIREWORK_ROCKET)
+              ? CrossbowShot.Charge.FIREWORK
+              : CrossbowShot.Charge.ARROW);
+    }
+    Float maxAngle = items.size() > 1 ? projectileSpread(crossbow) : Float.valueOf(0.0F);
+    List<CrossbowShot.Projectile> volley =
+        CrossbowShot.volley(shooter, charges, maxAngle == null ? 0.0F : maxAngle);
+
+    List<Shot> shots = new ArrayList<>(volley.size());
+    for (int i = 0; i < volley.size(); i++) {
+      CrossbowShot.Projectile projectile = volley.get(i);
+      // An unknown spread leaves only the projectile that flies straight regardless of it.
+      if (maxAngle == null && projectile.angle() != 0.0F) {
+        continue;
+      }
+      Flight flight =
+          projectile.charge() == CrossbowShot.Charge.FIREWORK
+              ? Flight.firework(flightCount(items.get(i)))
+              : Flight.arrow(MAX_TICKS);
+      shots.add(shot(player, level, flight, projectile.launch()));
+    }
+    if (shots.isEmpty()) {
+      return null;
+    }
+    return new Prediction(Weapon.CROSSBOW, hand, List.copyOf(shots), 0, level.getGameTime());
+  }
+
+  private static Shot shot(LocalPlayer player, ClientLevel level, Flight flight, Launch launch) {
+    Trajectory path =
+        flight.simulate(
+            launch.spawn(), launch.nominalVelocity(), new ClientWorldView(level, player));
+    boolean living =
+        path.end() == Trajectory.End.ENTITY
+            && level.getEntity(path.entity().id()) instanceof LivingEntity;
+    SpreadZone.Zone zone = null;
+    List<ZoneSurfaces.Patch> patches = List.of();
+    if (TrajectoryConfig.get().spreadZone
+        && path.end() == Trajectory.End.BLOCK
+        && path.impact() != null) {
+      // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
+      // by 0.05 per axis, which skews a direction taken from the last two points of a short final
+      // step.
+      zone = SpreadZone.compute(launch, flight, path.impact(), path.arrival());
+      if (zone != null) {
+        patches = ZoneSurfaces.patches(level, zone);
+      }
+    }
+    return new Shot(flight, launch, path, living, zone, patches);
+  }
+
+  /** {@code 1 + Fireworks.flightDuration()}, as {@code FireworkRocketEntity} reads it. */
+  private static int flightCount(ItemStack rocket) {
+    Fireworks fireworks = rocket.get(DataComponents.FIREWORKS);
+    return 1 + (fireworks == null ? 0 : fireworks.flightDuration());
+  }
+
+  /**
+   * {@code EnchantmentHelper.processProjectileSpread} for the crossbow, which vanilla runs on the
+   * server only. Effects without conditions are applied as the server would; an effect with a
+   * condition could depend on what only the server knows, so the spread is then unknown ({@code
+   * null}).
+   */
+  private static Float projectileSpread(ItemStack crossbow) {
+    MutableFloat angle = new MutableFloat(0.0F);
+    boolean[] known = {true};
+    RandomSource random = RandomSource.create(0L);
+    EnchantmentHelper.runIterationOnItem(
+        crossbow,
+        (enchantment, enchantmentLevel) -> {
+          for (ConditionalEffect<EnchantmentValueEffect> effect :
+              enchantment.value().getEffects(EnchantmentEffectComponents.PROJECTILE_SPREAD)) {
+            if (effect.requirements().isPresent()) {
+              known[0] = false;
+            } else {
+              angle.setValue(effect.effect().process(enchantmentLevel, random, angle.floatValue()));
+            }
+          }
+        });
+    return known[0] ? Math.max(0.0F, angle.floatValue()) : null;
+  }
+
+  /** The weapon a prediction is for. */
+  public enum Weapon {
+    BOW,
+    CROSSBOW
+  }
+
+  /**
+   * One predicted projectile: how it flies, its launch, the flight without spread, whether it ends
+   * in a living entity (mobs, players, armor stands), and the spread zone with the lit block
+   * surfaces it falls on ({@code null} and empty unless the path ends in a block).
+   */
+  public record Shot(
+      Flight flight,
+      Launch launch,
+      Trajectory path,
+      boolean livingTarget,
+      SpreadZone.Zone zone,
+      List<ZoneSurfaces.Patch> zonePatches) {}
+
+  /**
+   * A predicted shot of one weapon: its projectiles, the first being the one that flies straight
+   * along the view, how long a bow has been drawn, and when it was computed.
+   */
+  public record Prediction(
+      Weapon weapon, InteractionHand hand, List<Shot> shots, int ticksHeld, long gameTime) {
+
+    /** The projectile straight along the view. */
+    public Shot primary() {
+      return shots.getFirst();
+    }
+
+    public Launch launch() {
+      return primary().launch();
+    }
+
+    public Trajectory path() {
+      return primary().path();
+    }
+
+    /** Whether any projectile ends in a living entity. */
+    public boolean livingTarget() {
+      return shots.stream().anyMatch(Shot::livingTarget);
+    }
+
+    public SpreadZone.Zone zone() {
+      return primary().zone();
+    }
+
+    public List<ZoneSurfaces.Patch> zonePatches() {
+      return primary().zonePatches();
+    }
+  }
+}

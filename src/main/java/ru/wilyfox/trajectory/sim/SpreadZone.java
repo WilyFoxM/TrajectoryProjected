@@ -8,7 +8,7 @@ import java.util.SplittableRandom;
 /**
  * Where the server's random spread can put the arrow around the predicted hit.
  *
- * <p>Vanilla adds an offset of up to {@link BowShot#SPREAD_HALF_WIDTH} per axis, from a triangle
+ * <p>Vanilla adds an offset of up to {@link Launch#SPREAD_HALF_WIDTH} per axis, from a triangle
  * distribution, to the unit launch direction ({@code Projectile.getMovementToShoot}). A fixed set
  * of offsets — the eight corners of that cube and a seeded triangle sample — is flown in free air
  * up to the plane through the predicted hit that faces the arrow's arrival direction. An ellipse in
@@ -75,7 +75,7 @@ public final class SpreadZone {
     if (OFFSETS != null) {
       return OFFSETS;
     }
-    double s = BowShot.SPREAD_HALF_WIDTH;
+    double s = Launch.SPREAD_HALF_WIDTH;
     List<Vec3d> out = new ArrayList<>();
     for (int i = 0; i < 8; i++) {
       out.add(new Vec3d((i & 1) == 0 ? -s : s, (i & 2) == 0 ? -s : s, (i & 4) == 0 ? -s : s));
@@ -93,9 +93,9 @@ public final class SpreadZone {
 
   /**
    * Fits the zone for a launch whose path without spread hits {@code hit}, arriving along {@code
-   * arrival}. Returns {@code null} if no shot reaches the plane within {@code maxTicks}.
+   * arrival}. Returns {@code null} if no shot reaches the plane within the flight's tick limit.
    */
-  public static Zone compute(BowShot.Launch launch, Vec3d hit, Vec3d arrival, int maxTicks) {
+  public static Zone compute(Launch launch, Flight flight, Vec3d hit, Vec3d arrival) {
     Vec3d d = arrival.normalize();
     if (d.lengthSqr() == 0.0) {
       return null;
@@ -106,7 +106,7 @@ public final class SpreadZone {
 
     List<double[]> points = new ArrayList<>();
     for (Vec3d offset : offsets()) {
-      Vec3d crossing = crossing(launch.spawn(), launch.velocity(offset), hit, d, maxTicks);
+      Vec3d crossing = crossing(launch.spawn(), launch.velocity(offset), flight, hit, d);
       if (crossing != null) {
         Vec3d rel = crossing.subtract(hit);
         points.add(new double[] {dot(rel, u), dot(rel, v)});
@@ -159,10 +159,11 @@ public final class SpreadZone {
   }
 
   /**
-   * Flies in free air with the arrow's order of operations (move, drag, gravity) and returns where
-   * the path crosses the plane through {@code point} with normal {@code normal}.
+   * Flies in free air (move, then the flight's own velocity update) and returns where the path
+   * crosses the plane through {@code point} with normal {@code normal}.
    */
-  static Vec3d crossing(Vec3d spawn, Vec3d velocity, Vec3d point, Vec3d normal, int maxTicks) {
+  static Vec3d crossing(Vec3d spawn, Vec3d velocity, Flight flight, Vec3d point, Vec3d normal) {
+    int maxTicks = flight.maxTicks();
     Vec3d pos = spawn;
     Vec3d vel = velocity;
     double side = dot(pos.subtract(point), normal);
@@ -175,7 +176,7 @@ public final class SpreadZone {
       }
       pos = next;
       side = nextSide;
-      vel = vel.scale(ArrowFlight.AIR_DRAG).add(0.0, -ArrowFlight.GRAVITY, 0.0);
+      vel = flight.nextVelocity(vel);
     }
     return null;
   }

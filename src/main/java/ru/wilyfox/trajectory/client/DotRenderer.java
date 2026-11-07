@@ -252,17 +252,20 @@ final class DotRenderer {
   private static final double PULSE_MARKER_SIZE = 0.2;
   private static final double PULSE_EASE_MS = 180.0;
 
+  /** Opacity at the end of an uncertain tail, relative to the certain path. */
+  private static final double UNCERTAIN_ALPHA = 0.2;
+
   private static double pulseStrength;
   private static long lastFrameNanos;
 
   private DotRenderer() {}
 
   static void collect(LevelRenderContext context) {
-    BowPreview.Prediction current = BowPreview.current();
+    ShotPreview.Prediction current = ShotPreview.current();
     if (current == null) {
       return;
     }
-    BowPreview.Prediction previous = BowPreview.previous();
+    ShotPreview.Prediction previous = ShotPreview.previous();
     Minecraft minecraft = Minecraft.getInstance();
     float partial = minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 
@@ -273,23 +276,19 @@ final class DotRenderer {
     Vector3f up = camera.orientation.transform(new Vector3f(0.0F, 1.0F, 0.0F));
     Vector3f left = camera.orientation.transform(new Vector3f(-1.0F, 0.0F, 0.0F));
 
-    List<Vec3d> path =
-        previous == null
-            ? current.path().points()
-            : blend(previous.path().points(), current.path().points(), partial);
     TrajectoryConfig config = TrajectoryConfig.get();
-    Trajectory.End end = current.path().end();
-    boolean hit = config.hitMarker && (end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY);
     boolean living = current.livingTarget();
-    boolean cross = living && config.livingCross;
     double pulse = pulse(living && config.livingPulse);
     Vec3d hand = Vec3d.ZERO;
+    // The crossbow is held in front of the view: a line from the side looks off, so its path starts
+    // at the eyes, as close hits do.
     if (config.firstPersonLeadIn
+        && current.weapon() != ShotPreview.Weapon.CROSSBOW
         && minecraft.options.getCameraType().isFirstPerson()
         && minecraft.getCameraEntity() == minecraft.player
         && minecraft.player != null) {
       HumanoidArm arm =
-          minecraft.player.getUsedItemHand() == InteractionHand.MAIN_HAND
+          current.hand() == InteractionHand.MAIN_HAND
               ? minecraft.player.getMainArm()
               : minecraft.player.getMainArm().getOpposite();
       double side = arm == HumanoidArm.RIGHT ? HAND_SIDE : -HAND_SIDE;
@@ -299,15 +298,58 @@ final class DotRenderer {
               -left.y() * side + up.y() * HAND_UP,
               -left.z() * side + up.z() * HAND_UP);
     }
+    Vec3 eye = camera.pos;
+    Predicate<Vec3d> occluded = point -> occluded(minecraft, eye, point);
+
+    for (int i = 0; i < current.shots().size(); i++) {
+      ShotPreview.Shot shot = current.shots().get(i);
+      ShotPreview.Shot before = previous == null ? null : previous.shots().get(i);
+      collectShot(
+          context,
+          minecraft,
+          config,
+          shot,
+          before,
+          partial,
+          camera,
+          pixelsPerRadian,
+          up,
+          left,
+          pulse,
+          hand,
+          occluded);
+    }
+  }
+
+  private static void collectShot(
+      LevelRenderContext context,
+      Minecraft minecraft,
+      TrajectoryConfig config,
+      ShotPreview.Shot current,
+      ShotPreview.Shot previous,
+      float partial,
+      CameraRenderState camera,
+      double pixelsPerRadian,
+      Vector3f up,
+      Vector3f left,
+      double pulse,
+      Vec3d hand,
+      Predicate<Vec3d> occluded) {
+    List<Vec3d> path =
+        previous == null
+            ? current.path().points()
+            : blend(previous.path().points(), current.path().points(), partial);
+    Trajectory.End end = current.path().end();
+    boolean hit = config.hitMarker && (end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY);
+    boolean cross = current.livingTarget() && config.livingCross;
     Vec3d markerAt = path.isEmpty() ? null : path.getLast();
     if (end == Trajectory.End.ENTITY && markerAt != null) {
       markerAt = facingSide(minecraft, current.path().entity(), markerAt, camera.pos);
     }
-    Vec3 eye = camera.pos;
-    Predicate<Vec3d> occluded = point -> occluded(minecraft, eye, point);
     Layout layout =
         layout(
             path,
+            certainLength(path, current.path().certainPoints()),
             hit,
             current.path().face(),
             markerAt,
@@ -362,6 +404,21 @@ final class DotRenderer {
             cross ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
       }
     }
+  }
+
+  /**
+   * Length along the path up to its last certain point; past it the projectile may already have
+   * ended (a firework's random lifetime). Infinite when every point is certain.
+   */
+  static double certainLength(List<Vec3d> path, int certainPoints) {
+    if (certainPoints >= path.size()) {
+      return Double.POSITIVE_INFINITY;
+    }
+    double length = 0.0;
+    for (int i = 0; i + 1 < certainPoints; i++) {
+      length += Math.sqrt(path.get(i).distanceToSqr(path.get(i + 1)));
+    }
+    return length;
   }
 
   /** Whether blocks stand between the camera and a world point (block outline shapes). */
@@ -509,12 +566,14 @@ final class DotRenderer {
   record Layout(List<Dot> dots, List<Dot> overlay, List<Dot> overlayHidden, Dot marker) {}
 
   /**
-   * Lays out the dots of a path. {@code pulse} in [0, 1] dims and enlarges the path dots (not the
-   * marker); {@code hand} is the offset of the drawn start from the real one (zero outside first
-   * person).
+   * Lays out the dots of a path. Dots past {@code certainLength} blocks fade towards the end, where
+   * the projectile may no longer be. {@code pulse} in [0, 1] dims and enlarges the path dots (not
+   * the marker); {@code hand} is the offset of the drawn start from the real one (zero outside
+   * first person).
    */
   static Layout layout(
       List<Vec3d> path,
+      double certainLength,
       boolean hit,
       Face face,
       Vec3d markerAt,
@@ -564,7 +623,11 @@ final class DotRenderer {
       double sep = Math.sqrt(sq(p[4] - q[4]) + sq(p[5] - q[5]) + sq(p[6] - q[6]));
       double ratio = gap * 2.0 * angle / Math.max(sep, 1.0e-9);
       double level = Math.clamp(Math.log(ratio) / Math.log(2.0), 0.0, MAX_LEVEL);
-      double alpha = base * levelAlpha(k, level) * (1.0 - PULSE_ALPHA * pulse);
+      double alpha =
+          base
+              * levelAlpha(k, level)
+              * (1.0 - PULSE_ALPHA * pulse)
+              * uncertainty(k * LATTICE, certainLength, (n - 1) * LATTICE);
       if (alpha > 0.02) {
         Dot dot = new Dot(p[0], p[1], p[2], angle * distance * (1.0 + PULSE_SIZE * pulse), alpha);
         if (weights[k] <= ARC_EPSILON) {
@@ -616,6 +679,18 @@ final class DotRenderer {
     }
     double[] lift = normal(face);
     return new Dot(dx + lift[0] * up, dy + lift[1] * up, dz + lift[2] * up, radius, alpha);
+  }
+
+  /**
+   * Opacity factor along the uncertain tail of a path: 1 up to {@code certain} blocks, easing down
+   * to {@link #UNCERTAIN_ALPHA} at the end.
+   */
+  static double uncertainty(double along, double certain, double total) {
+    if (along <= certain || total <= certain) {
+      return 1.0;
+    }
+    double t = Math.clamp((along - certain) / (total - certain), 0.0, 1.0);
+    return 1.0 - (1.0 - UNCERTAIN_ALPHA) * t * t * (3.0 - 2.0 * t);
   }
 
   /**

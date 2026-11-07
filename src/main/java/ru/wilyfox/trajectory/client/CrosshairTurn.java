@@ -24,7 +24,7 @@ public final class CrosshairTurn {
     long now = System.nanoTime();
     double elapsedMs = lastNanos == 0 ? 0.0 : Math.min((now - lastNanos) / 1.0e6, 100.0);
     lastNanos = now;
-    BowPreview.Prediction prediction = BowPreview.current();
+    ShotPreview.Prediction prediction = ShotPreview.current();
     boolean living =
         prediction != null && prediction.livingTarget() && TrajectoryConfig.get().crosshairTurn;
     double step = elapsedMs / DURATION_MS;

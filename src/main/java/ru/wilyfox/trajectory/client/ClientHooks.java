@@ -11,7 +11,7 @@ public final class ClientHooks {
   public static void register() {
     ClientTickEvents.END_CLIENT_TICK.register(
         minecraft -> {
-          BowPreview.tick(minecraft);
+          ShotPreview.tick(minecraft);
           ShotLog.tick();
         });
     LevelRenderEvents.COLLECT_SUBMITS.register(DotRenderer::collect);

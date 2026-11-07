@@ -20,7 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.wilyfox.trajectory.mixin.AbstractArrowAccessor;
 import ru.wilyfox.trajectory.sim.ArrowFlight;
-import ru.wilyfox.trajectory.sim.BowShot;
+import ru.wilyfox.trajectory.sim.Launch;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
 
@@ -43,13 +43,13 @@ final class ShotLog {
 
   private static final int MAX_TRACK_TICKS = 600;
 
-  private static BowPreview.Prediction pending;
+  private static ShotPreview.Prediction pending;
   private static final List<Tracked> tracked = new ArrayList<>();
   private static Path file;
 
   private ShotLog() {}
 
-  static void released(BowPreview.Prediction prediction) {
+  static void released(ShotPreview.Prediction prediction) {
     if (ENABLED) {
       pending = prediction;
     }
@@ -92,7 +92,7 @@ final class ShotLog {
   }
 
   private static void write(Tracked shot, String outcome) {
-    BowShot.Launch launch = shot.prediction.launch();
+    Launch launch = shot.prediction.launch();
     Vec3d actual = ClientWorldView.own(shot.arrow.position());
     Vec3d implied =
         shot.velocity
@@ -167,7 +167,7 @@ final class ShotLog {
 
   private static final class Tracked {
     final Arrow arrow;
-    final BowPreview.Prediction prediction;
+    final ShotPreview.Prediction prediction;
     final Vec3d spawn;
     final Vec3d velocity;
     final Trajectory fromServer;
@@ -175,7 +175,7 @@ final class ShotLog {
 
     Tracked(
         Arrow arrow,
-        BowPreview.Prediction prediction,
+        ShotPreview.Prediction prediction,
         Vec3d spawn,
         Vec3d velocity,
         Trajectory fromServer) {
