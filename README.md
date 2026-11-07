@@ -84,9 +84,16 @@ and Russian translations are included.
 
 ## Compatibility
 
-Built for Minecraft **26.2** with Fabric. It has not been tested with Sodium, Iris
-shader packs or other rendering mods yet, nor on multiplayer servers, where latency
-and plugins can change what the server fires.
+Built for Minecraft **26.2** with Fabric. I play with **Sodium** (0.9.2 tested).
+
+With **Iris** (1.11.4 tested) and a shader pack active, the line, markers and spread
+zone are drawn over the pack's finished image, so they look the same as without
+shaders and stay sharp; they are not lit or fogged by the pack. Checked with
+Complementary Reimagined r5.8.1 and BSL v10.1.8. Without a pack, Iris changes
+nothing.
+
+Other rendering mods have not been tested, nor have multiplayer servers, where
+latency and plugins can change what the server fires.
 
 ## Accuracy
 
