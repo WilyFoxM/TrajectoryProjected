@@ -1,5 +1,6 @@
 package ru.wilyfox.trajectory.client;
 
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -9,6 +10,7 @@ import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.ArrowFlight;
 import ru.wilyfox.trajectory.sim.BowShot;
 import ru.wilyfox.trajectory.sim.ShooterState;
+import ru.wilyfox.trajectory.sim.SpreadZone;
 import ru.wilyfox.trajectory.sim.Trajectory;
 
 /**
@@ -80,13 +82,33 @@ public final class BowPreview {
     boolean living =
         path.end() == Trajectory.End.ENTITY
             && level.getEntity(path.entity().id()) instanceof LivingEntity;
-    return new Prediction(launch, path, ticksHeld, level.getGameTime(), living);
+    SpreadZone.Zone zone = null;
+    List<ZoneSurfaces.Patch> patches = List.of();
+    if (TrajectoryConfig.get().spreadZone
+        && path.end() == Trajectory.End.BLOCK
+        && path.impact() != null) {
+      // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
+      // by 0.05 per axis, which skews a direction taken from the last two points of a short final
+      // step.
+      zone = SpreadZone.compute(launch, path.impact(), path.arrival(), MAX_TICKS);
+      if (zone != null) {
+        patches = ZoneSurfaces.patches(level, zone);
+      }
+    }
+    return new Prediction(launch, path, ticksHeld, level.getGameTime(), living, zone, patches);
   }
 
   /**
-   * A predicted shot: the launch, the flight without spread, when it was computed, and whether it
-   * ends in a living entity (mobs, players, armor stands).
+   * A predicted shot: the launch, the flight without spread, when it was computed, whether it ends
+   * in a living entity (mobs, players, armor stands), and the spread zone with the lit block
+   * surfaces it falls on ({@code null} and empty unless the path ends in a block).
    */
   public record Prediction(
-      BowShot.Launch launch, Trajectory path, int ticksHeld, long gameTime, boolean livingTarget) {}
+      BowShot.Launch launch,
+      Trajectory path,
+      int ticksHeld,
+      long gameTime,
+      boolean livingTarget,
+      SpreadZone.Zone zone,
+      List<ZoneSurfaces.Patch> zonePatches) {}
 }

@@ -57,7 +57,7 @@ public final class ArrowFlight {
     for (int tickCount = 1; tickCount <= maxTicks; tickCount++) {
       Vec3d movement = vel;
       if (world.isInsideCollision(pos)) {
-        return new Trajectory(points, Trajectory.End.STUCK, tickCount, null, null);
+        return new Trajectory(points, Trajectory.End.STUCK, tickCount);
       }
 
       Vec3d origin = pos;
@@ -71,7 +71,7 @@ public final class ArrowFlight {
 
       WorldView.BlockClip blocks = world.clip(origin, origin.add(movement));
       if (blocks.type() == WorldView.BlockClip.Type.UNKNOWN) {
-        return new Trajectory(points, Trajectory.End.UNKNOWN, tickCount, null, null);
+        return new Trajectory(points, Trajectory.End.UNKNOWN, tickCount);
       }
 
       Aabb searchArea = box(pos).expandTowards(vel).inflate(1.0);
@@ -81,7 +81,14 @@ public final class ArrowFlight {
         hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.target().position())));
         Hit first = hits.getFirst();
         points.add(first.location());
-        return new Trajectory(points, Trajectory.End.ENTITY, tickCount, first.target(), null);
+        return new Trajectory(
+            points,
+            Trajectory.End.ENTITY,
+            tickCount,
+            first.target(),
+            null,
+            first.location(),
+            movement);
       }
 
       pos = blocks.location();
@@ -90,7 +97,8 @@ public final class ArrowFlight {
             new Vec3d(Math.signum(vel.x()), Math.signum(vel.y()), Math.signum(vel.z()))
                 .scale(BLOCK_BACKOFF);
         points.add(pos.subtract(backoff));
-        return new Trajectory(points, Trajectory.End.BLOCK, tickCount, null, blocks.face());
+        return new Trajectory(
+            points, Trajectory.End.BLOCK, tickCount, null, blocks.face(), pos, movement);
       }
 
       if (!inWater) {
@@ -101,11 +109,11 @@ public final class ArrowFlight {
       inWater = world.isInWater(box(pos));
       points.add(pos);
       if (pos.y() < world.minY() - 64.0) {
-        return new Trajectory(points, Trajectory.End.VOID, tickCount, null, null);
+        return new Trajectory(points, Trajectory.End.VOID, tickCount);
       }
     }
 
-    return new Trajectory(points, Trajectory.End.MAX_TICKS, maxTicks, null, null);
+    return new Trajectory(points, Trajectory.End.MAX_TICKS, maxTicks);
   }
 
   /** Arrow bounding box at a position. */
