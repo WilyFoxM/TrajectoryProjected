@@ -16,12 +16,16 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
+import ru.wilyfox.trajectory.sim.WorldView;
 
 /**
  * Draws the predicted path as round dots: camera-facing quads whose fragment shader cuts an
@@ -121,6 +125,14 @@ final class DotRenderer {
   private static final double END_MAX_RADIUS_PX = 8.0;
   private static final double END_OVER_DOT = 1.8;
   private static final double LIFT = 1.25;
+  private static final double ENTITY_PULL = 0.25;
+
+  /**
+   * Submit order for all our geometry. Entity layers use orders from 1 up (a slime's shell, eyes,
+   * armor), and an order is drawn after all lower ones; a late order keeps the line and the marker
+   * on top of translucent entity layers instead of tinted under them.
+   */
+  private static final int SUBMIT_ORDER = 64;
 
   /** Near the camera the line fades in over these distances, so it does not cover the crosshair. */
   private static final double NEAR_FADE_START = 1.0;
@@ -138,14 +150,16 @@ final class DotRenderer {
   /**
    * In first person the path leaves the eye almost along the view and collapses on screen. The
    * drawn line therefore starts at the bow hand, this far right (or left for the other hand) and
-   * down from the eye, and merges into the real path over {@link #MERGE_DISTANCE} blocks of flight
-   * (at most {@link #MERGE_SHARE} of the path), so the hit point and the far part stay exact.
+   * down from the eye, and merges into the real path over {@link #MERGE_DISTANCE} blocks of flight,
+   * so the hit point and the far part stay exact. Paths shorter than {@link #HAND_MIN_PATH} blocks
+   * are drawn plain; the arc fades in up to {@link #HAND_FULL_PATH}.
    */
   private static final double HAND_SIDE = 0.32;
 
   private static final double HAND_DOWN = 0.26;
   private static final double MERGE_DISTANCE = 12.0;
-  private static final double MERGE_SHARE = 0.6;
+  private static final double HAND_MIN_PATH = 12.0;
+  private static final double HAND_FULL_PATH = 16.0;
 
   /** Hidden dots are drawn larger, so their outline is thick enough to read on any surface. */
   private static final double HIDDEN_SCALE = 1.5;
@@ -157,13 +171,15 @@ final class DotRenderer {
 
   /**
    * On a living target the path breathes: opacity dips by up to {@link #PULSE_ALPHA} and dots grow
-   * by up to {@link #PULSE_SIZE}, once per {@link #PULSE_PERIOD_MS}. The pulse eases in and out
-   * over {@link #PULSE_EASE_MS} when the target changes.
+   * by up to {@link #PULSE_SIZE}, the cross by up to {@link #PULSE_MARKER_SIZE}, once per {@link
+   * #PULSE_PERIOD_MS}. The pulse eases in and out over {@link #PULSE_EASE_MS} when the target
+   * changes.
    */
-  private static final double PULSE_PERIOD_MS = 1100.0;
+  private static final double PULSE_PERIOD_MS = 1000.0;
 
-  private static final double PULSE_ALPHA = 0.3;
-  private static final double PULSE_SIZE = 0.15;
+  private static final double PULSE_ALPHA = 0.55;
+  private static final double PULSE_SIZE = 0.35;
+  private static final double PULSE_MARKER_SIZE = 0.2;
   private static final double PULSE_EASE_MS = 180.0;
 
   private static double pulseStrength;
@@ -210,8 +226,13 @@ final class DotRenderer {
               -left.y() * side - up.y() * HAND_DOWN,
               -left.z() * side - up.z() * HAND_DOWN);
     }
+    Vec3d markerAt = path.isEmpty() ? null : path.getLast();
+    if (end == Trajectory.End.ENTITY && markerAt != null) {
+      markerAt = facingSide(minecraft, current.path().entity(), markerAt, camera.pos);
+    }
     Layout layout =
-        layout(path, hit, current.path().face(), camera.pos, pixelsPerRadian, pulse, hand);
+        layout(
+            path, hit, current.path().face(), markerAt, camera.pos, pixelsPerRadian, pulse, hand);
     if (layout.dots().isEmpty() && layout.marker() == null) {
       return;
     }
@@ -223,7 +244,14 @@ final class DotRenderer {
       Dot m = layout.marker();
       List<Dot> marker =
           List.of(
-              living ? new Dot(m.dx(), m.dy(), m.dz(), m.radius() * CROSS_SCALE, m.alpha()) : m);
+              living
+                  ? new Dot(
+                      m.dx(),
+                      m.dy(),
+                      m.dz(),
+                      m.radius() * CROSS_SCALE * (1.0 + PULSE_MARKER_SIZE * pulse),
+                      m.alpha())
+                  : m);
       submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left, 1.0);
       submit(
           context,
@@ -234,6 +262,27 @@ final class DotRenderer {
           left,
           living ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
     }
+  }
+
+  /**
+   * The arrow meets an entity's box on the side it flies in from, which from the camera is often
+   * the top or the far side, behind the model (and under a slime's shell). The marker goes where
+   * the line of sight to that point enters the box instead: the side the player sees.
+   */
+  private static Vec3d facingSide(
+      Minecraft minecraft, WorldView.EntityTarget target, Vec3d hit, Vec3 cam) {
+    Entity entity = minecraft.level == null ? null : minecraft.level.getEntity(target.id());
+    Aabb box = target.box();
+    if (entity != null) {
+      AABB b = entity.getBoundingBox();
+      box = new Aabb(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ);
+    }
+    Vec3d eye = new Vec3d(cam.x, cam.y, cam.z);
+    if (box.contains(eye)) {
+      return hit;
+    }
+    Vec3d entry = box.clip(eye, hit.add(hit.subtract(eye).normalize().scale(0.5)));
+    return entry == null ? hit : entry;
   }
 
   private static void submit(
@@ -249,6 +298,7 @@ final class DotRenderer {
     }
     context
         .submitNodeCollector()
+        .order(SUBMIT_ORDER)
         .submitCustomGeometry(
             poseStack,
             type,
@@ -296,6 +346,7 @@ final class DotRenderer {
       List<Vec3d> path,
       boolean hit,
       Face face,
+      Vec3d markerAt,
       Vec3 cam,
       double pixelsPerRadian,
       double pulse,
@@ -315,7 +366,7 @@ final class DotRenderer {
     }
 
     List<Dot> dots = new ArrayList<>();
-    Dot marker = hit && !path.isEmpty() ? marker(path.getLast(), face, cam, pixelsPerRadian) : null;
+    Dot marker = hit && markerAt != null ? marker(markerAt, face, cam, pixelsPerRadian) : null;
     // Path dots under the marker would only show as clipped bits around it.
     double clear = marker == null ? 0.0 : marker.radius() * 2.0;
     Vec3d end = path.isEmpty() ? null : path.getLast();
@@ -372,9 +423,9 @@ final class DotRenderer {
     // A little more than the radius: at grazing angles far away depth precision runs out.
     double up = radius * LIFT;
     if (face == null) {
-      // An entity hit lies on the bounding box, and the model may stand in front of it: pull the
-      // marker towards the camera instead.
-      double pull = Math.min(up, distance * 0.5) / distance;
+      // An entity hit lies on the bounding box, and models often stick out of it (a slime's shell):
+      // pull the marker towards the camera instead, at least a quarter block.
+      double pull = Math.min(Math.max(up, ENTITY_PULL), distance * 0.5) / distance;
       return new Dot(dx * (1.0 - pull), dy * (1.0 - pull), dz * (1.0 - pull), radius, alpha);
     }
     double[] lift = normal(face);
@@ -406,11 +457,19 @@ final class DotRenderer {
     if (hand.lengthSqr() == 0.0 || lattice.isEmpty()) {
       return lattice;
     }
-    double merge = Math.min(MERGE_DISTANCE, MERGE_SHARE * lattice.size() * LATTICE);
+    // Close hits keep the plain path: the arc would not merge before the target. The arc fades in
+    // between these path lengths so it does not pop while the aim sweeps over the threshold.
+    double length = lattice.size() * LATTICE;
+    double strength = Math.clamp((length - HAND_MIN_PATH) / (HAND_FULL_PATH - HAND_MIN_PATH), 0, 1);
+    strength = strength * strength * (3.0 - 2.0 * strength);
+    if (strength <= 0.0) {
+      return lattice;
+    }
+    double merge = MERGE_DISTANCE;
     List<Vec3d> out = new ArrayList<>(lattice.size());
     for (int k = 0; k < lattice.size(); k++) {
       double t = Math.clamp(k * LATTICE / merge, 0.0, 1.0);
-      double weight = 1.0 - t * t * (3.0 - 2.0 * t);
+      double weight = strength * (1.0 - t * t * (3.0 - 2.0 * t));
       out.add(weight > 0.0 ? lattice.get(k).add(hand.scale(weight)) : lattice.get(k));
     }
     return out;
