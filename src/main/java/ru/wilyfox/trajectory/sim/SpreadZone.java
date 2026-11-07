@@ -159,8 +159,8 @@ public final class SpreadZone {
   }
 
   /**
-   * Flies in free air (move, then the flight's own velocity update) and returns where the path
-   * crosses the plane through {@code point} with normal {@code normal}.
+   * Flies in free air, tick by tick as the flight does, and returns where the path crosses the
+   * plane through {@code point} with normal {@code normal}.
    */
   static Vec3d crossing(Vec3d spawn, Vec3d velocity, Flight flight, Vec3d point, Vec3d normal) {
     int maxTicks = flight.maxTicks();
@@ -168,7 +168,8 @@ public final class SpreadZone {
     Vec3d vel = velocity;
     double side = dot(pos.subtract(point), normal);
     for (int tick = 0; tick < maxTicks; tick++) {
-      Vec3d next = pos.add(vel);
+      Flight.Step step = flight.step(vel);
+      Vec3d next = pos.add(step.movement());
       double nextSide = dot(next.subtract(point), normal);
       if (side < 0.0 && nextSide >= 0.0) {
         double f = -side / (nextSide - side);
@@ -176,7 +177,7 @@ public final class SpreadZone {
       }
       pos = next;
       side = nextSide;
-      vel = flight.nextVelocity(vel);
+      vel = step.next();
     }
     return null;
   }

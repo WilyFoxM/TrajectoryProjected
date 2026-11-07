@@ -36,13 +36,22 @@ public final class BowShot {
       return null;
     }
 
+    return fromRotation(shooter, 0.0F, pow * 3.0F);
+  }
+
+  /**
+   * {@code Projectile.shootFromRotation} by a player, for the projectiles spawned at {@code eyeY -
+   * 0.1F} ({@code AbstractArrow} and {@code ThrowableItemProjectile} with an owner): the direction
+   * from the rotation with {@code yOffset} added to the pitch of the vertical part only, and the
+   * shooter's known movement passed on (without its vertical part on the ground).
+   */
+  public static Launch fromRotation(ShooterState shooter, float yOffset, float power) {
     Vec3d feet = shooter.position();
     double eyeY = feet.y() + shooter.eyeHeight();
     Vec3d spawn = new Vec3d(feet.x(), eyeY - 0.1F, feet.z());
 
     float yRot = VanillaMath.serverYaw(shooter.sentYaw());
     float xRot = VanillaMath.serverPitch(shooter.sentPitch());
-    float yOffset = 0.0F;
     float xd =
         -VanillaMath.sin(yRot * VanillaMath.DEG_TO_RAD)
             * VanillaMath.cos(xRot * VanillaMath.DEG_TO_RAD);
@@ -54,6 +63,6 @@ public final class BowShot {
 
     Vec3d moved = shooter.knownMovement();
     Vec3d inherited = new Vec3d(moved.x(), shooter.onGround() ? 0.0 : moved.y(), moved.z());
-    return new Launch(spawn, direction, pow * 3.0F, inherited);
+    return new Launch(spawn, direction, power, inherited);
   }
 }
