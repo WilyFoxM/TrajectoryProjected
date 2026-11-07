@@ -15,11 +15,15 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
+import ru.wilyfox.trajectory.sim.WorldView;
 
 /**
  * Draws the predicted path as round dots: camera-facing quads whose fragment shader cuts an
@@ -53,6 +57,26 @@ final class DotRenderer {
           .withCull(false)
           .build();
 
+  /** The hit marker on a living target: an anti-aliased cross instead of a disc. */
+  private static final RenderPipeline CROSS =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/cross"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/cross"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withCull(false)
+          .build();
+
+  private static final RenderPipeline CROSS_HIDDEN =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/cross_hidden"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/cross_hidden"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withCull(false)
+          .build();
+
   private static final RenderType DOTS =
       RenderType.create(
           MOD_ID + "_dots", RenderSetup.builder(VISIBLE).sortOnUpload().createRenderSetup());
@@ -60,6 +84,15 @@ final class DotRenderer {
   private static final RenderType DOTS_HIDDEN =
       RenderType.create(
           MOD_ID + "_dots_hidden", RenderSetup.builder(HIDDEN).sortOnUpload().createRenderSetup());
+
+  private static final RenderType CROSSES =
+      RenderType.create(
+          MOD_ID + "_cross", RenderSetup.builder(CROSS).sortOnUpload().createRenderSetup());
+
+  private static final RenderType CROSSES_HIDDEN =
+      RenderType.create(
+          MOD_ID + "_cross_hidden",
+          RenderSetup.builder(CROSS_HIDDEN).sortOnUpload().createRenderSetup());
 
   /** {@code f6f7eb} from the palette. */
   private static final int COLOR_RGB = 0xF6F7EB;
@@ -90,6 +123,14 @@ final class DotRenderer {
   private static final double END_MAX_RADIUS_PX = 8.0;
   private static final double END_OVER_DOT = 1.8;
   private static final double LIFT = 1.25;
+  private static final double ENTITY_PULL = 0.25;
+
+  /**
+   * Submit order for all our geometry. Entity layers use orders from 1 up (a slime's shell, eyes,
+   * armor), and an order is drawn after all lower ones; a late order keeps the line and the marker
+   * on top of translucent entity layers instead of tinted under them.
+   */
+  private static final int SUBMIT_ORDER = 64;
 
   /** Near the camera the line fades in over these distances, so it does not cover the crosshair. */
   private static final double NEAR_FADE_START = 1.0;
@@ -103,6 +144,25 @@ final class DotRenderer {
   private static final double FAR_ALPHA = 0.45;
 
   private static final int MAX_ALPHA = 235;
+
+  /** The cross needs more room than a disc to read as a cross: thin arms, same visual weight. */
+  private static final double CROSS_SCALE = 1.35;
+
+  /**
+   * On a living target the path breathes: opacity dips by up to {@link #PULSE_ALPHA} and dots grow
+   * by up to {@link #PULSE_SIZE}, the cross by up to {@link #PULSE_MARKER_SIZE}, once per {@link
+   * #PULSE_PERIOD_MS}. The pulse eases in and out over {@link #PULSE_EASE_MS} when the target
+   * changes.
+   */
+  private static final double PULSE_PERIOD_MS = 1000.0;
+
+  private static final double PULSE_ALPHA = 0.55;
+  private static final double PULSE_SIZE = 0.35;
+  private static final double PULSE_MARKER_SIZE = 0.2;
+  private static final double PULSE_EASE_MS = 180.0;
+
+  private static double pulseStrength;
+  private static long lastFrameNanos;
 
   private DotRenderer() {}
 
@@ -128,18 +188,91 @@ final class DotRenderer {
             : blend(previous.path().points(), current.path().points(), partial);
     Trajectory.End end = current.path().end();
     boolean hit = end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY;
-    List<Dot> dots = layout(path, hit, current.path().face(), camera.pos, pixelsPerRadian);
-    if (dots.isEmpty()) {
+    boolean living = current.livingTarget();
+    double pulse = pulse(living);
+    Vec3d markerAt = path.isEmpty() ? null : path.getLast();
+    if (end == Trajectory.End.ENTITY && markerAt != null) {
+      markerAt = facingSide(minecraft, current.path().entity(), markerAt, camera.pos);
+    }
+    Layout layout =
+        layout(path, hit, current.path().face(), markerAt, camera.pos, pixelsPerRadian, pulse);
+    if (layout.dots().isEmpty() && layout.marker() == null) {
       return;
     }
 
     PoseStack poseStack = context.poseStack();
-    for (RenderType type : List.of(DOTS, DOTS_HIDDEN)) {
-      context
-          .submitNodeCollector()
-          .submitCustomGeometry(
-              poseStack, type, (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left)));
+    submit(context, poseStack, DOTS, layout.dots(), up, left);
+    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left);
+    if (layout.marker() != null) {
+      Dot m = layout.marker();
+      List<Dot> marker =
+          List.of(
+              living
+                  ? new Dot(
+                      m.dx(),
+                      m.dy(),
+                      m.dz(),
+                      m.radius() * CROSS_SCALE * (1.0 + PULSE_MARKER_SIZE * pulse),
+                      m.alpha())
+                  : m);
+      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left);
+      submit(context, poseStack, living ? CROSSES_HIDDEN : DOTS_HIDDEN, marker, up, left);
     }
+  }
+
+  /**
+   * The arrow meets an entity's box on the side it flies in from, which from the camera is often
+   * the top or the far side, behind the model (and under a slime's shell). The marker goes where
+   * the line of sight to that point enters the box instead: the side the player sees.
+   */
+  private static Vec3d facingSide(
+      Minecraft minecraft, WorldView.EntityTarget target, Vec3d hit, Vec3 cam) {
+    Entity entity = minecraft.level == null ? null : minecraft.level.getEntity(target.id());
+    Aabb box = target.box();
+    if (entity != null) {
+      AABB b = entity.getBoundingBox();
+      box = new Aabb(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ);
+    }
+    Vec3d eye = new Vec3d(cam.x, cam.y, cam.z);
+    if (box.contains(eye)) {
+      return hit;
+    }
+    Vec3d entry = box.clip(eye, hit.add(hit.subtract(eye).normalize().scale(0.5)));
+    return entry == null ? hit : entry;
+  }
+
+  private static void submit(
+      LevelRenderContext context,
+      PoseStack poseStack,
+      RenderType type,
+      List<Dot> dots,
+      Vector3f up,
+      Vector3f left) {
+    if (dots.isEmpty()) {
+      return;
+    }
+    context
+        .submitNodeCollector()
+        .order(SUBMIT_ORDER)
+        .submitCustomGeometry(
+            poseStack, type, (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left)));
+  }
+
+  /**
+   * Current pulse phase in [0, 1] (0: rest, 1: dimmest and largest), scaled by how far the pulse
+   * has eased in. Smooth in time, so it does not depend on the tick rate.
+   */
+  private static double pulse(boolean living) {
+    long now = System.nanoTime();
+    double elapsedMs = lastFrameNanos == 0 ? 0.0 : (now - lastFrameNanos) / 1.0e6;
+    lastFrameNanos = now;
+    double step = Math.min(1.0, elapsedMs / PULSE_EASE_MS);
+    pulseStrength += ((living ? 1.0 : 0.0) - pulseStrength) * step;
+    if (pulseStrength < 1.0e-3) {
+      return 0.0;
+    }
+    double phase = (now / 1.0e6 % PULSE_PERIOD_MS) / PULSE_PERIOD_MS;
+    return pulseStrength * (0.5 - 0.5 * Math.cos(2.0 * Math.PI * phase));
   }
 
   /** Point-by-point blend of two per-tick paths; the shorter one repeats its last point. */
@@ -154,9 +287,21 @@ final class DotRenderer {
     return out;
   }
 
-  /** Camera-relative dots for a path, including the hit marker at its last point. */
-  static List<Dot> layout(
-      List<Vec3d> path, boolean hit, Face face, Vec3 cam, double pixelsPerRadian) {
+  /** Camera-relative path dots and the hit marker at the path's last point. */
+  record Layout(List<Dot> dots, Dot marker) {}
+
+  /**
+   * Lays out the dots of a path. {@code pulse} in [0, 1] dims and enlarges the path dots (not the
+   * marker).
+   */
+  static Layout layout(
+      List<Vec3d> path,
+      boolean hit,
+      Face face,
+      Vec3d markerAt,
+      Vec3 cam,
+      double pixelsPerRadian,
+      double pulse) {
     List<Vec3d> lattice = resample(path);
     double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
     double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
@@ -172,7 +317,7 @@ final class DotRenderer {
     }
 
     List<Dot> dots = new ArrayList<>();
-    Dot marker = hit && !path.isEmpty() ? marker(path.getLast(), face, cam, pixelsPerRadian) : null;
+    Dot marker = hit && markerAt != null ? marker(markerAt, face, cam, pixelsPerRadian) : null;
     // Path dots under the marker would only show as clipped bits around it.
     double clear = marker == null ? 0.0 : marker.radius() * 2.0;
     Vec3d end = path.isEmpty() ? null : path.getLast();
@@ -192,21 +337,19 @@ final class DotRenderer {
       double sep = Math.sqrt(sq(p[4] - q[4]) + sq(p[5] - q[5]) + sq(p[6] - q[6]));
       double ratio = GAP * 2.0 * angle / Math.max(sep, 1.0e-9);
       double level = Math.clamp(Math.log(ratio) / Math.log(2.0), 0.0, MAX_LEVEL);
-      double alpha = base * levelAlpha(k, level);
+      double alpha = base * levelAlpha(k, level) * (1.0 - PULSE_ALPHA * pulse);
       if (alpha > 0.02) {
-        dots.add(new Dot(p[0], p[1], p[2], angle * distance, alpha));
+        dots.add(new Dot(p[0], p[1], p[2], angle * distance * (1.0 + PULSE_SIZE * pulse), alpha));
       }
     }
-    if (marker != null) {
-      dots.add(marker);
-    }
-    return dots;
+    return new Layout(dots, marker);
   }
 
   /**
    * The hit marker: larger than a dot at the same distance, shrinking with distance, and lifted off
-   * the hit face by its radius so the surface does not cut it and send part of it to the hidden
-   * pass. {@code null} when it is too close to the camera to show.
+   * the hit surface by its radius so the surface does not cut it and send part of it to the hidden
+   * pass. {@code face} is {@code null} for an entity hit. {@code null} when it is too close to the
+   * camera to show.
    */
   private static Dot marker(Vec3d end, Face face, Vec3 cam, double pixelsPerRadian) {
     double dx = end.x() - cam.x;
@@ -229,8 +372,14 @@ final class DotRenderer {
             END_MAX_RADIUS_PX / pixelsPerRadian);
     double radius = Math.max(endAngle, END_OVER_DOT * dotAngle) * distance;
     // A little more than the radius: at grazing angles far away depth precision runs out.
-    double[] lift = normal(face);
     double up = radius * LIFT;
+    if (face == null) {
+      // An entity hit lies on the bounding box, and models often stick out of it (a slime's shell):
+      // pull the marker towards the camera instead, at least a quarter block.
+      double pull = Math.min(Math.max(up, ENTITY_PULL), distance * 0.5) / distance;
+      return new Dot(dx * (1.0 - pull), dy * (1.0 - pull), dz * (1.0 - pull), radius, alpha);
+    }
+    double[] lift = normal(face);
     return new Dot(dx + lift[0] * up, dy + lift[1] * up, dz + lift[2] * up, radius, alpha);
   }
 
@@ -278,11 +427,8 @@ final class DotRenderer {
     return near * (1.0 - (1.0 - FAR_ALPHA) * far);
   }
 
-  /** Outward normal of a block face; zero for entity hits. */
+  /** Outward normal of a block face. */
   private static double[] normal(Face face) {
-    if (face == null) {
-      return new double[] {0.0, 0.0, 0.0};
-    }
     return switch (face) {
       case DOWN -> new double[] {0.0, -1.0, 0.0};
       case UP -> new double[] {0.0, 1.0, 0.0};

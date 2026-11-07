@@ -3,6 +3,7 @@ package ru.wilyfox.trajectory.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Items;
 import ru.wilyfox.trajectory.sim.ArrowFlight;
 import ru.wilyfox.trajectory.sim.BowShot;
@@ -72,9 +73,16 @@ public final class BowPreview {
             launch.nominalVelocity(),
             new ClientWorldView(level, player),
             MAX_TICKS);
-    return new Prediction(launch, path, ticksHeld, level.getGameTime());
+    boolean living =
+        path.end() == Trajectory.End.ENTITY
+            && level.getEntity(path.entity().id()) instanceof LivingEntity;
+    return new Prediction(launch, path, ticksHeld, level.getGameTime(), living);
   }
 
-  /** A predicted shot: the launch, the flight without spread, and when it was computed. */
-  public record Prediction(BowShot.Launch launch, Trajectory path, int ticksHeld, long gameTime) {}
+  /**
+   * A predicted shot: the launch, the flight without spread, when it was computed, and whether it
+   * ends in a living entity (mobs, players, armor stands).
+   */
+  public record Prediction(
+      BowShot.Launch launch, Trajectory path, int ticksHeld, long gameTime, boolean livingTarget) {}
 }
