@@ -8,8 +8,8 @@ in vec4 vertexColor;
 out vec4 fragColor;
 
 // A dot seen through terrain: a fainter core inside a dark outline, so the dotted line stays
-// readable on any surface in front of it. The outline is 060410 from the palette.
-const vec3 OUTLINE = vec3(0.0235, 0.0157, 0.0627);
+// readable on any surface in front of it. The outline is 151615, a dark shade of 2a2b2a.
+const vec3 OUTLINE = vec3(0.0824, 0.0863, 0.0824);
 const float CORE = 0.42;
 const float CORE_ALPHA = 0.45;
 const float OUTLINE_ALPHA = 0.9;
