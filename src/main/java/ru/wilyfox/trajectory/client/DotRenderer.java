@@ -26,6 +26,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
+import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
 import ru.wilyfox.trajectory.sim.Trajectory;
@@ -261,12 +262,15 @@ final class DotRenderer {
         previous == null
             ? current.path().points()
             : blend(previous.path().points(), current.path().points(), partial);
+    TrajectoryConfig config = TrajectoryConfig.get();
     Trajectory.End end = current.path().end();
-    boolean hit = end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY;
+    boolean hit = config.hitMarker && (end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY);
     boolean living = current.livingTarget();
-    double pulse = pulse(living);
+    boolean cross = living && config.livingCross;
+    double pulse = pulse(living && config.livingPulse);
     Vec3d hand = Vec3d.ZERO;
-    if (minecraft.options.getCameraType().isFirstPerson()
+    if (config.firstPersonLeadIn
+        && minecraft.options.getCameraType().isFirstPerson()
         && minecraft.getCameraEntity() == minecraft.player
         && minecraft.player != null) {
       HumanoidArm arm =
@@ -306,14 +310,17 @@ final class DotRenderer {
 
     PoseStack poseStack = context.poseStack();
     submit(context, poseStack, DOTS, layout.dots(), up, left, 1.0);
-    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left, HIDDEN_SCALE);
     submit(context, poseStack, DOTS_OVERLAY, layout.overlay(), up, left, 1.0);
-    submit(context, poseStack, DOTS_OVERLAY_HIDDEN, layout.overlayHidden(), up, left, HIDDEN_SCALE);
+    if (config.showHidden) {
+      submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left, HIDDEN_SCALE);
+      submit(
+          context, poseStack, DOTS_OVERLAY_HIDDEN, layout.overlayHidden(), up, left, HIDDEN_SCALE);
+    }
     if (layout.marker() != null) {
       Dot m = layout.marker();
       List<Dot> marker =
           List.of(
-              living
+              cross
                   ? new Dot(
                       m.dx(),
                       m.dy(),
@@ -321,15 +328,17 @@ final class DotRenderer {
                       m.radius() * CROSS_SCALE * (1.0 + PULSE_MARKER_SIZE * pulse),
                       m.alpha())
                   : m);
-      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left, 1.0);
-      submit(
-          context,
-          poseStack,
-          living ? CROSSES_HIDDEN : DOTS_HIDDEN,
-          marker,
-          up,
-          left,
-          living ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
+      submit(context, poseStack, cross ? CROSSES : DOTS, marker, up, left, 1.0);
+      if (config.showHidden) {
+        submit(
+            context,
+            poseStack,
+            cross ? CROSSES_HIDDEN : DOTS_HIDDEN,
+            marker,
+            up,
+            left,
+            cross ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
+      }
     }
   }
 
@@ -448,8 +457,10 @@ final class DotRenderer {
     List<Vec3d> real = resample(path);
     double[] weights = handWeights(real.size(), hand);
     List<Vec3d> lattice = fromHand(real, weights, hand);
-    double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
-    double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
+    double size = size();
+    double gap = GAP * TrajectoryConfig.get().dotSpacing / 100.0;
+    double minAngle = MIN_RADIUS_PX * size / pixelsPerRadian;
+    double maxAngle = MAX_RADIUS_PX * size / pixelsPerRadian;
     int n = lattice.size();
     double[][] rel = new double[n][];
     for (int k = 0; k < n; k++) {
@@ -479,10 +490,10 @@ final class DotRenderer {
       if (marker != null && lattice.get(k).distanceToSqr(end) < clear * clear) {
         continue;
       }
-      double angle = Math.clamp(DOT_RADIUS / distance, minAngle, maxAngle);
+      double angle = Math.clamp(DOT_RADIUS * size / distance, minAngle, maxAngle);
       double[] q = rel[k + 1 < n ? k + 1 : Math.max(k - 1, 0)];
       double sep = Math.sqrt(sq(p[4] - q[4]) + sq(p[5] - q[5]) + sq(p[6] - q[6]));
-      double ratio = GAP * 2.0 * angle / Math.max(sep, 1.0e-9);
+      double ratio = gap * 2.0 * angle / Math.max(sep, 1.0e-9);
       double level = Math.clamp(Math.log(ratio) / Math.log(2.0), 0.0, MAX_LEVEL);
       double alpha = base * levelAlpha(k, level) * (1.0 - PULSE_ALPHA * pulse);
       if (alpha > 0.02) {
@@ -514,16 +525,17 @@ final class DotRenderer {
     if (alpha <= 0.0) {
       return null;
     }
+    double size = size();
     double dotAngle =
         Math.clamp(
-            DOT_RADIUS / distance,
-            MIN_RADIUS_PX / pixelsPerRadian,
-            MAX_RADIUS_PX / pixelsPerRadian);
+            DOT_RADIUS * size / distance,
+            MIN_RADIUS_PX * size / pixelsPerRadian,
+            MAX_RADIUS_PX * size / pixelsPerRadian);
     double endAngle =
         Math.clamp(
-            END_RADIUS / distance,
-            END_MIN_RADIUS_PX / pixelsPerRadian,
-            END_MAX_RADIUS_PX / pixelsPerRadian);
+            END_RADIUS * size / distance,
+            END_MIN_RADIUS_PX * size / pixelsPerRadian,
+            END_MAX_RADIUS_PX * size / pixelsPerRadian);
     double radius = Math.max(endAngle, END_OVER_DOT * dotAngle) * distance;
     // A little more than the radius: at grazing angles far away depth precision runs out.
     double up = radius * LIFT;
@@ -613,6 +625,9 @@ final class DotRenderer {
     double far =
         Math.clamp((distance - FAR_FADE_START) / (FAR_FADE_END - FAR_FADE_START), 0.0, 1.0);
     far = far * far * (3.0 - 2.0 * far);
+    if (!TrajectoryConfig.get().farDimming) {
+      return near;
+    }
     return near * (1.0 - (1.0 - FAR_ALPHA) * far);
   }
 
@@ -626,6 +641,11 @@ final class DotRenderer {
       case WEST -> new double[] {-1.0, 0.0, 0.0};
       case EAST -> new double[] {1.0, 0.0, 0.0};
     };
+  }
+
+  /** Dot and marker size from the settings, as a factor of the default. */
+  private static double size() {
+    return TrajectoryConfig.get().dotSize / 100.0;
   }
 
   private static double sq(double v) {

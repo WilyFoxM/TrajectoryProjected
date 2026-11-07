@@ -1,5 +1,7 @@
 package ru.wilyfox.trajectory.client;
 
+import ru.wilyfox.trajectory.config.TrajectoryConfig;
+
 /**
  * Turns the vanilla crosshair from a plus into a cross while the predicted arrow would hit a living
  * entity. The turn runs over {@link #DURATION_MS} in either direction with an ease-in-out curve, so
@@ -23,7 +25,8 @@ public final class CrosshairTurn {
     double elapsedMs = lastNanos == 0 ? 0.0 : Math.min((now - lastNanos) / 1.0e6, 100.0);
     lastNanos = now;
     BowPreview.Prediction prediction = BowPreview.current();
-    boolean living = prediction != null && prediction.livingTarget();
+    boolean living =
+        prediction != null && prediction.livingTarget() && TrajectoryConfig.get().crosshairTurn;
     double step = elapsedMs / DURATION_MS;
     progress = living ? Math.min(1.0, progress + step) : Math.max(0.0, progress - step);
     return (float) (MAX_DEGREES * easeInOut(progress));
