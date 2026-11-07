@@ -25,11 +25,13 @@ import ru.wilyfox.trajectory.sim.Flight;
 import ru.wilyfox.trajectory.sim.Launch;
 import ru.wilyfox.trajectory.sim.ShooterState;
 import ru.wilyfox.trajectory.sim.SpreadZone;
+import ru.wilyfox.trajectory.sim.ThrowShot;
 import ru.wilyfox.trajectory.sim.Trajectory;
 
 /**
- * Predicts what the player's weapon would fire, once per client tick: the bow being drawn, or a
- * charged crossbow held in either hand.
+ * Predicts what the player's weapon would fire, once per client tick: the bow being drawn, a
+ * charged crossbow or a thrown item (snowball, egg, ender pearl, splash and lingering potion,
+ * bottle o' enchanting) held in either hand.
  *
  * <p>The prediction is computed at the end of a client tick, after the movement packet. A bow
  * release or a crossbow click is handled at the start of the next tick and sent before that tick's
@@ -95,8 +97,44 @@ public final class ShotPreview {
           return crossbow(player, level, hand, stack, charged);
         }
       }
+      ThrowShot.Item thrown = thrown(stack);
+      if (thrown != null) {
+        // A throw on cooldown (an ender pearl right after the last) does not happen.
+        return player.getCooldowns().isOnCooldown(stack) ? null : toss(player, level, hand, thrown);
+      }
     }
     return null;
+  }
+
+  /** The vanilla thrown items; {@code null} for anything else. */
+  private static ThrowShot.Item thrown(ItemStack stack) {
+    if (stack.is(Items.SNOWBALL)) {
+      return ThrowShot.Item.SNOWBALL;
+    }
+    if (stack.is(Items.EGG) || stack.is(Items.BLUE_EGG) || stack.is(Items.BROWN_EGG)) {
+      return ThrowShot.Item.EGG;
+    }
+    if (stack.is(Items.ENDER_PEARL)) {
+      return ThrowShot.Item.ENDER_PEARL;
+    }
+    if (stack.is(Items.SPLASH_POTION) || stack.is(Items.LINGERING_POTION)) {
+      return ThrowShot.Item.POTION;
+    }
+    if (stack.is(Items.EXPERIENCE_BOTTLE)) {
+      return ThrowShot.Item.EXPERIENCE_BOTTLE;
+    }
+    return null;
+  }
+
+  private static Prediction toss(
+      LocalPlayer player, ClientLevel level, InteractionHand hand, ThrowShot.Item item) {
+    ShooterState shooter = SentState.shooter(player);
+    if (shooter == null) {
+      return null;
+    }
+    Shot shot =
+        shot(player, level, ThrowShot.flight(item, MAX_TICKS), ThrowShot.launch(shooter, item));
+    return new Prediction(Weapon.THROW, hand, List.of(shot), 0, level.getGameTime());
   }
 
   private static Prediction bow(LocalPlayer player, ClientLevel level, InteractionHand hand) {
@@ -211,7 +249,8 @@ public final class ShotPreview {
   /** The weapon a prediction is for. */
   public enum Weapon {
     BOW,
-    CROSSBOW
+    CROSSBOW,
+    THROW
   }
 
   /**
