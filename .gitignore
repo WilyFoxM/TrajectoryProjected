@@ -7,6 +7,9 @@ run/
 out/
 bin/
 
+# Logo sources and drafts; the chosen icon ships from src/main/resources.
+/logo/
+
 # Local development settings
 .idea/
 .vscode/
