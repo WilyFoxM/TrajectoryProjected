@@ -27,11 +27,13 @@ import ru.wilyfox.trajectory.sim.ShooterState;
 import ru.wilyfox.trajectory.sim.SpreadZone;
 import ru.wilyfox.trajectory.sim.ThrowShot;
 import ru.wilyfox.trajectory.sim.Trajectory;
+import ru.wilyfox.trajectory.sim.TridentShot;
+import ru.wilyfox.trajectory.sim.WindChargeShot;
 
 /**
- * Predicts what the player's weapon would fire, once per client tick: the bow being drawn, a
- * charged crossbow or a thrown item (snowball, egg, ender pearl, splash and lingering potion,
- * bottle o' enchanting) held in either hand.
+ * Predicts what the player's weapon would fire, once per client tick: the bow or the trident being
+ * readied, a charged crossbow or a thrown item (snowball, egg, ender pearl, splash and lingering
+ * potion, bottle o' enchanting, wind charge) held in either hand.
  *
  * <p>The prediction is computed at the end of a client tick, after the movement packet. A bow
  * release or a crossbow click is handled at the start of the next tick and sent before that tick's
@@ -85,9 +87,14 @@ public final class ShotPreview {
     }
     // Only the vanilla bow and crossbow: other weapons may change the launch.
     if (player.isUsingItem()) {
-      return player.getUseItem().is(Items.BOW)
-          ? bow(player, level, player.getUsedItemHand())
-          : null;
+      ItemStack using = player.getUseItem();
+      if (using.is(Items.BOW)) {
+        return bow(player, level, player.getUsedItemHand());
+      }
+      if (using.is(Items.TRIDENT)) {
+        return trident(player, level, player.getUsedItemHand(), using);
+      }
+      return null;
     }
     for (InteractionHand hand : InteractionHand.values()) {
       ItemStack stack = player.getItemInHand(hand);
@@ -96,6 +103,20 @@ public final class ShotPreview {
         if (charged != null && !charged.isEmpty()) {
           return crossbow(player, level, hand, stack, charged);
         }
+      }
+      if (stack.is(Items.WIND_CHARGE)) {
+        return player.getCooldowns().isOnCooldown(stack)
+            ? null
+            : single(
+                player,
+                level,
+                hand,
+                Weapon.THROW,
+                Flight.windCharge(MAX_TICKS),
+                SentState.shooter(player) == null
+                    ? null
+                    : WindChargeShot.launch(SentState.shooter(player)),
+                0);
       }
       ThrowShot.Item thrown = thrown(stack);
       if (thrown != null) {
@@ -124,6 +145,46 @@ public final class ShotPreview {
       return ThrowShot.Item.EXPERIENCE_BOTTLE;
     }
     return null;
+  }
+
+  /**
+   * A trident being readied. Riptide launches the player instead of throwing, and a trident about
+   * to break is not thrown: neither is shown.
+   */
+  private static Prediction trident(
+      LocalPlayer player, ClientLevel level, InteractionHand hand, ItemStack trident) {
+    if (trident.nextDamageWillBreak()
+        || EnchantmentHelper.getTridentSpinAttackStrength(trident, player) > 0.0F) {
+      return null;
+    }
+    ShooterState shooter = SentState.shooter(player);
+    if (shooter == null) {
+      return null;
+    }
+    int ticksHeld = player.getTicksUsingItem();
+    return single(
+        player,
+        level,
+        hand,
+        Weapon.TRIDENT,
+        Flight.trident(MAX_TICKS),
+        TridentShot.launch(shooter, ticksHeld),
+        ticksHeld);
+  }
+
+  private static Prediction single(
+      LocalPlayer player,
+      ClientLevel level,
+      InteractionHand hand,
+      Weapon weapon,
+      Flight flight,
+      Launch launch,
+      int ticksHeld) {
+    if (launch == null) {
+      return null;
+    }
+    Shot shot = shot(player, level, flight, launch);
+    return new Prediction(weapon, hand, List.of(shot), ticksHeld, level.getGameTime());
   }
 
   private static Prediction toss(
@@ -250,6 +311,7 @@ public final class ShotPreview {
   public enum Weapon {
     BOW,
     CROSSBOW,
+    TRIDENT,
     THROW
   }
 

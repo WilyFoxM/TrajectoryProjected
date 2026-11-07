@@ -5,11 +5,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Flight of an arrow, tick by tick, in the order of vanilla 26.2 {@code AbstractArrow.tick}:
+ * Flight of an arrow or a trident, tick by tick, in the order of vanilla 26.2 {@code
+ * AbstractArrow.tick}:
  *
  * <ol>
  *   <li>stop if the position is inside a block's collision box;
- *   <li>in water (state from the previous tick): velocity × 0.6;
+ *   <li>in water (state from the previous tick): velocity × 0.6 (trident: 0.99);
  *   <li>move along the velocity captured at the start of the tick, stopping at the first entity or
  *       block ({@code stepMoveAndHit});
  *   <li>out of water: velocity × 0.99;
@@ -30,6 +31,9 @@ public final class ArrowFlight {
   /** {@code AbstractArrow.getWaterInertia} for arrows. */
   public static final float WATER_INERTIA = 0.6F;
 
+  /** {@code ThrownTrident.getWaterInertia}: the trident hardly slows in water. */
+  public static final float TRIDENT_WATER_INERTIA = 0.99F;
+
   /** {@code EntityTypes.ARROW}: {@code sized(0.5F, 0.5F)}. */
   public static final float WIDTH = 0.5F;
 
@@ -47,6 +51,15 @@ public final class ArrowFlight {
    * @param velocity velocity before the first tick
    */
   public static Trajectory simulate(Vec3d spawn, Vec3d velocity, WorldView world, int maxTicks) {
+    return simulate(spawn, velocity, world, maxTicks, WATER_INERTIA);
+  }
+
+  /**
+   * {@link #simulate(Vec3d, Vec3d, WorldView, int)} with another {@code getWaterInertia}: 0.99 for
+   * the trident ({@link #TRIDENT_WATER_INERTIA}).
+   */
+  public static Trajectory simulate(
+      Vec3d spawn, Vec3d velocity, WorldView world, int maxTicks, float waterInertia) {
     List<Vec3d> points = new ArrayList<>();
     points.add(spawn);
     Vec3d pos = spawn;
@@ -62,7 +75,7 @@ public final class ArrowFlight {
 
       Vec3d origin = pos;
       if (inWater) {
-        vel = vel.scale(WATER_INERTIA);
+        vel = vel.scale(waterInertia);
       }
 
       if (!leftOwner) {

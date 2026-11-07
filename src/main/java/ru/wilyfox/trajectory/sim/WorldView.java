@@ -38,6 +38,11 @@ public interface WorldView {
   /** Arrows are removed below {@code minY - 64} ({@code Entity.checkBelowWorld}). */
   double minY();
 
+  /** {@code Level.getMaxY()}: the highest block y; wind charges burst 30 above it. */
+  default double maxY() {
+    return Double.POSITIVE_INFINITY;
+  }
+
   /** Result of a block ray. */
   record BlockClip(Type type, Vec3d location, Face face) {
     public static BlockClip miss(Vec3d end) {

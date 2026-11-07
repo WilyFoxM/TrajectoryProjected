@@ -20,12 +20,21 @@ public interface Flight {
   /** Ticks after which the flight is cut off. */
   int maxTicks();
 
-  /** Arrows and the trident's relatives: {@link ArrowFlight}. */
+  /** Arrows: {@link ArrowFlight}. */
   static Flight arrow(int maxTicks) {
+    return arrow(maxTicks, ArrowFlight.WATER_INERTIA);
+  }
+
+  /** The trident: {@link ArrowFlight} with its water inertia. */
+  static Flight trident(int maxTicks) {
+    return arrow(maxTicks, ArrowFlight.TRIDENT_WATER_INERTIA);
+  }
+
+  private static Flight arrow(int maxTicks, float waterInertia) {
     return new Flight() {
       @Override
       public Trajectory simulate(Vec3d spawn, Vec3d velocity, WorldView world) {
-        return ArrowFlight.simulate(spawn, velocity, world, maxTicks);
+        return ArrowFlight.simulate(spawn, velocity, world, maxTicks, waterInertia);
       }
 
       @Override
@@ -73,6 +82,26 @@ public interface Flight {
       public Step step(Vec3d velocity) {
         Vec3d next = ThrowableFlight.nextVelocity(velocity, gravity, false);
         return new Step(next, next);
+      }
+
+      @Override
+      public int maxTicks() {
+        return maxTicks;
+      }
+    };
+  }
+
+  /** A wind charge: {@link WindChargeFlight}. */
+  static Flight windCharge(int maxTicks) {
+    return new Flight() {
+      @Override
+      public Trajectory simulate(Vec3d spawn, Vec3d velocity, WorldView world) {
+        return WindChargeFlight.simulate(spawn, velocity, world, maxTicks);
+      }
+
+      @Override
+      public Step step(Vec3d velocity) {
+        return new Step(velocity, velocity);
       }
 
       @Override
