@@ -5,6 +5,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Items;
+import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.ArrowFlight;
 import ru.wilyfox.trajectory.sim.BowShot;
 import ru.wilyfox.trajectory.sim.ShooterState;
@@ -51,7 +52,10 @@ public final class BowPreview {
   }
 
   private static Prediction compute(LocalPlayer player, ClientLevel level) {
-    if (player == null || level == null || player.isPassenger()) {
+    if (!TrajectoryConfig.get().enabled
+        || player == null
+        || level == null
+        || player.isPassenger()) {
       return null;
     }
     // Only the vanilla bow: other bows may change the launch.
