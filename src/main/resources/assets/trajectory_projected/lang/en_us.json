@@ -36,6 +36,8 @@
   "trajectory_projected.setting.far_dimming.description": "The line fades a little beyond about 50 blocks.",
   "trajectory_projected.setting.show_hidden": "Show behind blocks",
   "trajectory_projected.setting.show_hidden.description": "Parts of the path behind blocks are drawn faint and outlined.",
+  "trajectory_projected.setting.spread_zone": "Spread zone",
+  "trajectory_projected.setting.spread_zone.description": "Where the server's random spread can put the arrow, shown as a shade on the blocks around the hit. Most shots land in the inner ring.",
   "trajectory_projected.setting.hit_marker": "Hit marker",
   "trajectory_projected.setting.hit_marker.description": "A larger dot where the arrow will land.",
   "trajectory_projected.setting.living_pulse": "Pulse on living targets",

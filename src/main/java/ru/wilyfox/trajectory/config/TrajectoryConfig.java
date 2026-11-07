@@ -45,6 +45,9 @@ public final class TrajectoryConfig {
   /** Parts of the path behind blocks are drawn faint and outlined. */
   public boolean showHidden = true;
 
+  /** Where the server's random spread can put the arrow, shown on the blocks around the hit. */
+  public boolean spreadZone = true;
+
   /** A larger dot (or cross) where the arrow will hit. */
   public boolean hitMarker = true;
 

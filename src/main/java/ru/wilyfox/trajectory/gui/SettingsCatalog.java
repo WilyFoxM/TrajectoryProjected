@@ -83,6 +83,7 @@ final class SettingsCatalog {
             10));
     options.add(toggle("far_dimming", Page.LINE, () -> c().farDimming, v -> c().farDimming = v));
     options.add(toggle("show_hidden", Page.LINE, () -> c().showHidden, v -> c().showHidden = v));
+    options.add(toggle("spread_zone", Page.TARGET, () -> c().spreadZone, v -> c().spreadZone = v));
     options.add(toggle("hit_marker", Page.TARGET, () -> c().hitMarker, v -> c().hitMarker = v));
     options.add(
         toggle("living_pulse", Page.TARGET, () -> c().livingPulse, v -> c().livingPulse = v));

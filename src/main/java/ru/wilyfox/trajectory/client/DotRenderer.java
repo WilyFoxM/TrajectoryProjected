@@ -29,6 +29,7 @@ import org.joml.Vector3f;
 import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
+import ru.wilyfox.trajectory.sim.SpreadZone;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
 import ru.wilyfox.trajectory.sim.WorldView;
@@ -119,6 +120,20 @@ final class DotRenderer {
       RenderType.create(
           MOD_ID + "_dots_overlay_hidden",
           RenderSetup.builder(OVERLAY_HIDDEN).sortOnUpload().createRenderSetup());
+
+  /** The spread zone on block faces: a projected decal, depth-tested, never written to depth. */
+  private static final RenderPipeline ZONE =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/zone"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/zone"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withCull(false)
+          .build();
+
+  private static final RenderType ZONES =
+      RenderType.create(
+          MOD_ID + "_zone", RenderSetup.builder(ZONE).sortOnUpload().createRenderSetup());
 
   private static final RenderType DOTS =
       RenderType.create(
@@ -301,6 +316,13 @@ final class DotRenderer {
             pulse,
             hand,
             occluded);
+    if (config.spreadZone && current.zone() != null && !current.zonePatches().isEmpty()) {
+      SpreadZone.Zone zone =
+          previous != null && previous.zone() != null
+              ? SpreadZone.Zone.blend(previous.zone(), current.zone(), partial)
+              : current.zone();
+      submitZone(context, zone, current.zonePatches(), camera.pos);
+    }
     if (layout.dots().isEmpty()
         && layout.overlay().isEmpty()
         && layout.overlayHidden().isEmpty()
@@ -382,6 +404,53 @@ final class DotRenderer {
     }
     Vec3d entry = box.clip(eye, hit.add(hit.subtract(eye).normalize().scale(0.5)));
     return entry == null ? hit : entry;
+  }
+
+  /**
+   * Draws the zone on its lit patches. Each vertex carries its ellipse coordinates, so the fragment
+   * shader finds the edge exactly where the projected ellipse crosses the face. Drawn in an earlier
+   * order than the dots, so the path and the marker stay on top.
+   */
+  private static void submitZone(
+      LevelRenderContext context,
+      SpreadZone.Zone zone,
+      List<ZoneSurfaces.Patch> patches,
+      Vec3 cam) {
+    Vec3d c = zone.center();
+    double distance = Math.sqrt(sq(c.x() - cam.x) + sq(c.y() - cam.y) + sq(c.z() - cam.z));
+    double alpha = fade(distance);
+    if (alpha <= 0.0) {
+      return;
+    }
+    int color =
+        ((int) Math.round(255 * alpha) << 24) | ((int) Math.round(255 * zone.coreRatio()) << 16);
+    context
+        .submitNodeCollector()
+        .order(SUBMIT_ORDER - 1)
+        .submitCustomGeometry(
+            context.poseStack(),
+            ZONES,
+            (pose, buffer) -> {
+              for (ZoneSurfaces.Patch patch : patches) {
+                // A convex polygon as a fan of quads; an odd last one repeats its final corner.
+                List<Vec3d> corners = patch.corners();
+                for (int i = 1; i + 1 < corners.size(); i += 2) {
+                  Vec3d last = corners.get(Math.min(i + 2, corners.size() - 1));
+                  for (Vec3d v :
+                      new Vec3d[] {corners.get(0), corners.get(i), corners.get(i + 1), last}) {
+                    double[] uv = zone.coordinates(v);
+                    buffer
+                        .addVertex(
+                            pose,
+                            (float) (v.x() - cam.x),
+                            (float) (v.y() - cam.y),
+                            (float) (v.z() - cam.z))
+                        .setUv((float) uv[0], (float) uv[1])
+                        .setColor(color);
+                  }
+                }
+              }
+            });
   }
 
   private static void submit(

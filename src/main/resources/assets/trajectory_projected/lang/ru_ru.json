@@ -36,6 +36,8 @@
   "trajectory_projected.setting.far_dimming.description": "Линия немного тускнеет дальше примерно 50 блоков.",
   "trajectory_projected.setting.show_hidden": "Показывать за блоками",
   "trajectory_projected.setting.show_hidden.description": "Части пути за блоками рисуются бледнее и с обводкой.",
+  "trajectory_projected.setting.spread_zone": "Зона разброса",
+  "trajectory_projected.setting.spread_zone.description": "Куда случайный разброс сервера может отправить стрелу: тень на блоках вокруг точки попадания. Большинство выстрелов ложится во внутреннее кольцо.",
   "trajectory_projected.setting.hit_marker": "Маркер попадания",
   "trajectory_projected.setting.hit_marker.description": "Точка крупнее там, куда попадёт стрела.",
   "trajectory_projected.setting.living_pulse": "Пульсация на живой цели",

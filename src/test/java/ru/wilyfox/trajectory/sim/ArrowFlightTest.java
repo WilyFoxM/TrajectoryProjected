@@ -168,4 +168,47 @@ class ArrowFlightTest {
     assertEquals(63.2, t.last().z(), 0.5);
     assertEquals(24, t.ticks());
   }
+
+  /**
+   * The impact and the final movement come out of the flight itself, so a hit just past a tick
+   * boundary still has its true direction; the last two points do not, because of the backoff.
+   */
+  @Test
+  void impactAndArrivalSurviveAShortFinalStep() {
+    Vec3d v0 = new Vec3d(0.4, 0.2, 2.9);
+    Trajectory free = ArrowFlight.simulate(SPAWN, v0, TestWorld.empty(), 40);
+    List<Vec3d> p = free.points();
+    int k = 20;
+    Vec3d before = p.get(k);
+    Vec3d step = p.get(k + 1).subtract(before);
+    // A floor 0.02 below the point that starts tick k + 1: the final step is a sliver.
+    double floor = before.y() - 0.02;
+    Trajectory t = ArrowFlight.simulate(SPAWN, v0, TestWorld.floorAt(floor), 40);
+
+    assertEquals(Trajectory.End.BLOCK, t.end());
+    assertEquals(floor, t.impact().y(), 1.0e-9);
+    assertEquals(0.0, t.arrival().subtract(step).length(), 1.0e-12);
+    Vec3d sliver = t.impact().subtract(before);
+    assertTrue(sliver.length() < 0.1, "final step " + sliver.length());
+    assertEquals(0.0, angle(sliver, step), 1.0e-6);
+    // The rest point is backed off by 0.05 per axis against the motion.
+    Vec3d backoff =
+        new Vec3d(Math.signum(step.x()), Math.signum(step.y()), Math.signum(step.z())).scale(0.05F);
+    assertEquals(t.impact().subtract(backoff), t.last());
+    // ... so the direction from the last two points is far off.
+    Vec3d fromPoints = t.last().subtract(p.get(k));
+    assertTrue(angle(fromPoints, step) > 30.0, "angle " + angle(fromPoints, step));
+  }
+
+  @Test
+  void flightsWithoutAHitHaveNoImpact() {
+    Trajectory t = ArrowFlight.simulate(SPAWN, Vec3d.ZERO, TestWorld.empty(), 3000);
+    assertEquals(null, t.impact());
+    assertEquals(null, t.arrival());
+  }
+
+  private static double angle(Vec3d a, Vec3d b) {
+    double c = (a.x() * b.x() + a.y() * b.y() + a.z() * b.z()) / (a.length() * b.length());
+    return Math.toDegrees(Math.acos(Math.clamp(c, -1.0, 1.0)));
+  }
 }

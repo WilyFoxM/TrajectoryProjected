@@ -11,12 +11,27 @@ import java.util.List;
  * @param ticks ticks simulated, counting the tick that ended the flight
  * @param entity the entity hit, for {@link End#ENTITY}
  * @param face the block face hit, for {@link End#BLOCK}
+ * @param impact where the path meets the block or entity, before vanilla backs a stuck arrow off
+ *     it; {@code null} unless the flight ended in a hit
+ * @param arrival the movement of the final tick, along which the arrow meets the target; {@code
+ *     null} unless the flight ended in a hit
  */
 public record Trajectory(
-    List<Vec3d> points, End end, int ticks, WorldView.EntityTarget entity, Face face) {
+    List<Vec3d> points,
+    End end,
+    int ticks,
+    WorldView.EntityTarget entity,
+    Face face,
+    Vec3d impact,
+    Vec3d arrival) {
 
   public Trajectory {
     points = List.copyOf(points);
+  }
+
+  /** A flight that ended without a hit. */
+  public Trajectory(List<Vec3d> points, End end, int ticks) {
+    this(points, end, ticks, null, null, null, null);
   }
 
   public Vec3d last() {
