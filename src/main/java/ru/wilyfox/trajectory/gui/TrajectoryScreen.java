@@ -75,7 +75,9 @@ public final class TrajectoryScreen extends Screen {
     search.setTextShadow(false);
     search.setTextColor(SettingsTheme.TEXT);
     search.setMaxLength(80);
-    search.setHint(Component.translatable(SettingsCatalog.PREFIX + "search"));
+    search.setHint(
+        Component.translatable(SettingsCatalog.PREFIX + "search")
+            .withStyle(style -> style.withColor(SettingsTheme.MUTED & 0xFFFFFF)));
     search.setValue(query);
     search.setResponder(
         value -> {
@@ -211,15 +213,23 @@ public final class TrajectoryScreen extends Screen {
             getWidth(),
             getHeight(),
             4,
-            isHoveredOrFocused() ? SettingsTheme.HOVER : SettingsTheme.SURFACE);
+            selected.getAsBoolean()
+                ? SettingsTheme.NAV_SELECTED
+                : isHoveredOrFocused() ? SettingsTheme.HOVER : SettingsTheme.SURFACE);
         if (selected.getAsBoolean() || isFocused())
-          g.fill(getX() + 4, getY(), getRight() - 4, getY() + 1, SettingsTheme.ACCENT);
-        g.centeredText(
+          g.fill(
+              getX() + 4,
+              getY(),
+              getRight() - 4,
+              getY() + 1,
+              isFocused() ? SettingsTheme.FOCUS : SettingsTheme.ACCENT);
+        SettingsTheme.centered(
+            g,
             font,
             SettingsTheme.fit(font, getMessage().getString(), getWidth() - 8),
             getX() + getWidth() / 2,
             getY() + (getHeight() - font.lineHeight) / 2,
-            selected.getAsBoolean() ? SettingsTheme.ACCENT : SettingsTheme.TEXT);
+            selected.getAsBoolean() ? SettingsTheme.NAV_SELECTED_TEXT : SettingsTheme.TEXT);
       }
     };
   }
@@ -229,10 +239,10 @@ public final class TrajectoryScreen extends Screen {
     if (minecraft.level == null) extractPanorama(g, delta);
     extractBlurredBackground(g);
     g.fill(0, 0, width, height, SettingsTheme.SCRIM);
-    SettingsTheme.rounded(g, x + 2, y + 3, panelWidth, panelHeight, 8, 0x60000000);
+    SettingsTheme.rounded(g, x + 2, y + 3, panelWidth, panelHeight, 8, SettingsTheme.SHADOW);
     SettingsTheme.rounded(g, x, y, panelWidth, panelHeight, 8, SettingsTheme.PANEL);
-    g.fill(x + 8, y, x + panelWidth - 8, y + 1, SettingsTheme.ACCENT);
-    g.text(font, TrajectoryProjected.NAME, x + 14, y + 8, SettingsTheme.ACCENT, false);
+    g.fill(x + 8, y, x + panelWidth - 8, y + 1, SettingsTheme.PANEL_EDGE);
+    g.text(font, TrajectoryProjected.NAME, x + 14, y + 8, SettingsTheme.TITLE, false);
     g.text(font, version, x + 14, y + 22, SettingsTheme.MUTED, false);
     SettingsTheme.rounded(
         g,
@@ -241,16 +251,18 @@ public final class TrajectoryScreen extends Screen {
         search.getWidth() + 10,
         24,
         4,
-        SettingsTheme.BACKGROUND);
+        SettingsTheme.FIELD);
     if (search.isFocused())
       g.fill(
           search.getX(),
           search.getY() + 18,
           search.getRight(),
           search.getY() + 19,
-          SettingsTheme.ACCENT);
-    SettingsTheme.rounded(g, x + 8, contentY, sidebarWidth, panelHeight - 76, 5, 0x90060410);
-    SettingsTheme.rounded(g, contentX, contentY, contentWidth, panelHeight - 76, 5, 0x70060410);
+          SettingsTheme.FOCUS);
+    SettingsTheme.rounded(
+        g, x + 8, contentY, sidebarWidth, panelHeight - 76, 5, SettingsTheme.SIDEBAR);
+    SettingsTheme.rounded(
+        g, contentX, contentY, contentWidth, panelHeight - 76, 5, SettingsTheme.CONTENT);
     Component heading =
         query.isBlank()
             ? page.title()
@@ -272,9 +284,9 @@ public final class TrajectoryScreen extends Screen {
       int thumb = scrollbarThumbHeight();
       int thumbY = scrollbarThumbY();
       SettingsTheme.rounded(
-          g, contentX + contentWidth - 5, viewportTop, 2, track, 1, SettingsTheme.SURFACE);
+          g, contentX + contentWidth - 5, viewportTop, 2, track, 1, SettingsTheme.SCROLL_TRACK);
       SettingsTheme.rounded(
-          g, contentX + contentWidth - 6, thumbY, 4, thumb, 2, SettingsTheme.MUTED);
+          g, contentX + contentWidth - 6, thumbY, 4, thumb, 2, SettingsTheme.SCROLL_THUMB);
     }
     if (panelWidth > 460 || saveError != null) {
       String footer =
@@ -286,7 +298,7 @@ public final class TrajectoryScreen extends Screen {
           SettingsTheme.fit(font, footer, panelWidth - 220),
           x + 116,
           y + panelHeight - 21,
-          saveError == null ? SettingsTheme.MUTED : SettingsTheme.ACCENT,
+          saveError == null ? SettingsTheme.MUTED : SettingsTheme.TEXT,
           false);
     }
     super.extractRenderState(g, mx, my, delta);
@@ -450,10 +462,10 @@ public final class TrajectoryScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float delta) {
-      g.fill(0, 0, width, height, 0xD0060410);
+      g.fill(0, 0, width, height, SettingsTheme.DIALOG_SCRIM);
       int w = Math.min(320, width - 24), left = (width - w) / 2;
       SettingsTheme.rounded(g, left, height / 2 - 58, w, 112, 7, SettingsTheme.PANEL);
-      g.text(font, title, left + 12, height / 2 - 44, SettingsTheme.ACCENT, false);
+      g.text(font, title, left + 12, height / 2 - 44, SettingsTheme.TITLE, false);
       g.textWithWordWrap(
           font,
           Component.translatable(SettingsCatalog.PREFIX + "reset.description"),

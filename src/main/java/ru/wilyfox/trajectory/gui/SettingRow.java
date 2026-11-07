@@ -82,7 +82,7 @@ final class SettingRow extends Button {
         getHeight(),
         4,
         highlighted ? SettingsTheme.HOVER : SettingsTheme.SURFACE);
-    if (isFocused()) g.fill(getX() + 5, getY(), getRight() - 5, getY() + 1, SettingsTheme.ACCENT);
+    if (isFocused()) g.fill(getX() + 5, getY(), getRight() - 5, getY() + 1, SettingsTheme.FOCUS);
     int labelWidth = stacked() ? getWidth() - 16 : getWidth() - valueWidth() - 28;
     g.text(
         font,
@@ -107,20 +107,27 @@ final class SettingRow extends Button {
         valueWidth(),
         14,
         3,
-        selected ? SettingsTheme.SELECTED : SettingsTheme.BACKGROUND);
+        selected ? SettingsTheme.VALUE_ON : SettingsTheme.VALUE_OFF);
     if (selected || dragging)
       g.fill(
-          valueX() + 3, valueY(), valueX() + valueWidth() - 3, valueY() + 1, SettingsTheme.ACCENT);
+          valueX() + 3,
+          valueY(),
+          valueX() + valueWidth() - 3,
+          valueY() + 1,
+          dragging ? SettingsTheme.FOCUS : SettingsTheme.ACCENT);
     String value =
         active
             ? option.value().get().getString()
             : Component.translatable(SettingsCatalog.PREFIX + "managed").getString();
-    g.centeredText(
+    SettingsTheme.centered(
+        g,
         font,
         SettingsTheme.fit(font, value, valueWidth() - 6),
         valueX() + valueWidth() / 2,
         valueY() + 3,
-        !active ? SettingsTheme.DISABLED : selected ? SettingsTheme.ACCENT : SettingsTheme.TEXT);
+        !active
+            ? SettingsTheme.DISABLED
+            : selected ? SettingsTheme.VALUE_ON_TEXT : SettingsTheme.VALUE_OFF_TEXT);
   }
 
   @Override
