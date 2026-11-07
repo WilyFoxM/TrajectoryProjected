@@ -7,8 +7,8 @@ in vec4 vertexColor;
 
 out vec4 fragColor;
 
-// The cross seen through terrain: a fainter core inside a dark outline (060410), like hidden dots.
-const vec3 OUTLINE = vec3(0.0235, 0.0157, 0.0627);
+// The cross seen through terrain: a fainter core inside a dark outline (151615), like hidden dots.
+const vec3 OUTLINE = vec3(0.0824, 0.0863, 0.0824);
 const float ARM = 0.62;
 const float OUTER = 0.34;
 const float INNER = 0.11;
