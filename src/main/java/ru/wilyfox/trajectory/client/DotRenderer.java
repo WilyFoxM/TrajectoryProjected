@@ -12,6 +12,7 @@ import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
@@ -261,6 +262,12 @@ final class DotRenderer {
   private DotRenderer() {}
 
   static void collect(LevelRenderContext context) {
+    if (AfterShaders.shadowPass()) {
+      return;
+    }
+    if (AfterShaders.active()) {
+      AfterShaders.beginFrame();
+    }
     ShotPreview.Prediction current = ShotPreview.current();
     if (current == null) {
       return;
@@ -481,33 +488,32 @@ final class DotRenderer {
     }
     int color =
         ((int) Math.round(255 * alpha) << 24) | ((int) Math.round(255 * zone.coreRatio()) << 16);
-    context
-        .submitNodeCollector()
-        .order(SUBMIT_ORDER - 1)
-        .submitCustomGeometry(
-            context.poseStack(),
-            ZONES,
-            (pose, buffer) -> {
-              for (ZoneSurfaces.Patch patch : patches) {
-                // A convex polygon as a fan of quads; an odd last one repeats its final corner.
-                List<Vec3d> corners = patch.corners();
-                for (int i = 1; i + 1 < corners.size(); i += 2) {
-                  Vec3d last = corners.get(Math.min(i + 2, corners.size() - 1));
-                  for (Vec3d v :
-                      new Vec3d[] {corners.get(0), corners.get(i), corners.get(i + 1), last}) {
-                    double[] uv = zone.coordinates(v);
-                    buffer
-                        .addVertex(
-                            pose,
-                            (float) (v.x() - cam.x),
-                            (float) (v.y() - cam.y),
-                            (float) (v.z() - cam.z))
-                        .setUv((float) uv[0], (float) uv[1])
-                        .setColor(color);
-                  }
-                }
+    emit(
+        context,
+        SUBMIT_ORDER - 1,
+        context.poseStack(),
+        ZONES,
+        (pose, buffer) -> {
+          for (ZoneSurfaces.Patch patch : patches) {
+            // A convex polygon as a fan of quads; an odd last one repeats its final corner.
+            List<Vec3d> corners = patch.corners();
+            for (int i = 1; i + 1 < corners.size(); i += 2) {
+              Vec3d last = corners.get(Math.min(i + 2, corners.size() - 1));
+              for (Vec3d v :
+                  new Vec3d[] {corners.get(0), corners.get(i), corners.get(i + 1), last}) {
+                double[] uv = zone.coordinates(v);
+                buffer
+                    .addVertex(
+                        pose,
+                        (float) (v.x() - cam.x),
+                        (float) (v.y() - cam.y),
+                        (float) (v.z() - cam.z))
+                    .setUv((float) uv[0], (float) uv[1])
+                    .setColor(color);
               }
-            });
+            }
+          }
+        });
   }
 
   private static void submit(
@@ -521,13 +527,30 @@ final class DotRenderer {
     if (dots.isEmpty()) {
       return;
     }
-    context
-        .submitNodeCollector()
-        .order(SUBMIT_ORDER)
-        .submitCustomGeometry(
-            poseStack,
-            type,
-            (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left, scale)));
+    emit(
+        context,
+        SUBMIT_ORDER,
+        poseStack,
+        type,
+        (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left, scale)));
+  }
+
+  /**
+   * Hands geometry to the level's submit collector, or, with a shader pack active, to {@link
+   * AfterShaders} to draw once the pack has composed the frame.
+   */
+  private static void emit(
+      LevelRenderContext context,
+      int order,
+      PoseStack poseStack,
+      RenderType type,
+      SubmitNodeCollector.CustomGeometryRenderer geometry) {
+    if (AfterShaders.active()) {
+      AfterShaders.record(
+          context.levelState().cameraRenderState.viewRotationMatrix, poseStack, type, geometry);
+      return;
+    }
+    context.submitNodeCollector().order(order).submitCustomGeometry(poseStack, type, geometry);
   }
 
   /**
