@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -15,9 +16,15 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
 import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
@@ -76,6 +83,41 @@ final class DotRenderer {
           .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
           .withCull(false)
           .build();
+
+  /**
+   * The lead-in arc from the bow hand is not where the arrow flies, so the depth buffer cannot say
+   * whether it is hidden: these pipelines draw it without a depth test, and the style (plain or
+   * outlined) is chosen per dot from a ray to the real path point it stands for.
+   */
+  private static final RenderPipeline OVERLAY =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_overlay"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+          .withCull(false)
+          .build();
+
+  private static final RenderPipeline OVERLAY_HIDDEN =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_overlay_hidden"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot_hidden"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+          .withCull(false)
+          .build();
+
+  private static final RenderType DOTS_OVERLAY =
+      RenderType.create(
+          MOD_ID + "_dots_overlay",
+          RenderSetup.builder(OVERLAY).sortOnUpload().createRenderSetup());
+
+  private static final RenderType DOTS_OVERLAY_HIDDEN =
+      RenderType.create(
+          MOD_ID + "_dots_overlay_hidden",
+          RenderSetup.builder(OVERLAY_HIDDEN).sortOnUpload().createRenderSetup());
 
   private static final RenderType DOTS =
       RenderType.create(
@@ -145,6 +187,32 @@ final class DotRenderer {
 
   private static final int MAX_ALPHA = 235;
 
+  /**
+   * In first person the path leaves the eye almost along the view and collapses on screen. The
+   * drawn line therefore starts at the bow hand, this far right (or left for the other hand) and
+   * down from the eye, and merges into the real path over {@link #MERGE_DISTANCE} blocks of flight,
+   * so the hit point and the far part stay exact. Paths shorter than {@link #HAND_MIN_PATH} blocks
+   * are drawn plain; the arc fades in up to {@link #HAND_FULL_PATH}.
+   */
+  private static final double HAND_SIDE = 0.32;
+
+  private static final double HAND_DOWN = 0.26;
+  private static final double MERGE_DISTANCE = 12.0;
+
+  /** Dots moved by less than this share of the hand offset are drawn as the exact path. */
+  private static final double ARC_EPSILON = 0.02;
+
+  /** A block this close to the real point does not count as hiding it. */
+  private static final double OCCLUSION_SLACK = 0.1;
+
+  private static final double HAND_MIN_PATH = 12.0;
+  private static final double HAND_FULL_PATH = 16.0;
+
+  /** Hidden dots are drawn larger, so their outline is thick enough to read on any surface. */
+  private static final double HIDDEN_SCALE = 1.5;
+
+  private static final double HIDDEN_CROSS_SCALE = 1.2;
+
   /** The cross needs more room than a disc to read as a cross: thin arms, same visual weight. */
   private static final double CROSS_SCALE = 1.35;
 
@@ -190,19 +258,50 @@ final class DotRenderer {
     boolean hit = end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY;
     boolean living = current.livingTarget();
     double pulse = pulse(living);
+    Vec3d hand = Vec3d.ZERO;
+    if (minecraft.options.getCameraType().isFirstPerson()
+        && minecraft.getCameraEntity() == minecraft.player
+        && minecraft.player != null) {
+      HumanoidArm arm =
+          minecraft.player.getUsedItemHand() == InteractionHand.MAIN_HAND
+              ? minecraft.player.getMainArm()
+              : minecraft.player.getMainArm().getOpposite();
+      double side = arm == HumanoidArm.RIGHT ? HAND_SIDE : -HAND_SIDE;
+      hand =
+          new Vec3d(
+              -left.x() * side - up.x() * HAND_DOWN,
+              -left.y() * side - up.y() * HAND_DOWN,
+              -left.z() * side - up.z() * HAND_DOWN);
+    }
     Vec3d markerAt = path.isEmpty() ? null : path.getLast();
     if (end == Trajectory.End.ENTITY && markerAt != null) {
       markerAt = facingSide(minecraft, current.path().entity(), markerAt, camera.pos);
     }
+    Vec3 eye = camera.pos;
+    Predicate<Vec3d> occluded = point -> occluded(minecraft, eye, point);
     Layout layout =
-        layout(path, hit, current.path().face(), markerAt, camera.pos, pixelsPerRadian, pulse);
-    if (layout.dots().isEmpty() && layout.marker() == null) {
+        layout(
+            path,
+            hit,
+            current.path().face(),
+            markerAt,
+            camera.pos,
+            pixelsPerRadian,
+            pulse,
+            hand,
+            occluded);
+    if (layout.dots().isEmpty()
+        && layout.overlay().isEmpty()
+        && layout.overlayHidden().isEmpty()
+        && layout.marker() == null) {
       return;
     }
 
     PoseStack poseStack = context.poseStack();
-    submit(context, poseStack, DOTS, layout.dots(), up, left);
-    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left);
+    submit(context, poseStack, DOTS, layout.dots(), up, left, 1.0);
+    submit(context, poseStack, DOTS_HIDDEN, layout.dots(), up, left, HIDDEN_SCALE);
+    submit(context, poseStack, DOTS_OVERLAY, layout.overlay(), up, left, 1.0);
+    submit(context, poseStack, DOTS_OVERLAY_HIDDEN, layout.overlayHidden(), up, left, HIDDEN_SCALE);
     if (layout.marker() != null) {
       Dot m = layout.marker();
       List<Dot> marker =
@@ -215,9 +314,37 @@ final class DotRenderer {
                       m.radius() * CROSS_SCALE * (1.0 + PULSE_MARKER_SIZE * pulse),
                       m.alpha())
                   : m);
-      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left);
-      submit(context, poseStack, living ? CROSSES_HIDDEN : DOTS_HIDDEN, marker, up, left);
+      submit(context, poseStack, living ? CROSSES : DOTS, marker, up, left, 1.0);
+      submit(
+          context,
+          poseStack,
+          living ? CROSSES_HIDDEN : DOTS_HIDDEN,
+          marker,
+          up,
+          left,
+          living ? HIDDEN_CROSS_SCALE : HIDDEN_SCALE);
     }
+  }
+
+  /** Whether blocks stand between the camera and a world point (block outline shapes). */
+  private static boolean occluded(Minecraft minecraft, Vec3 eye, Vec3d point) {
+    if (minecraft.level == null) {
+      return false;
+    }
+    Vec3 to = new Vec3(point.x(), point.y(), point.z());
+    BlockHitResult hit =
+        minecraft.level.clip(
+            new ClipContext(
+                eye,
+                to,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
+                CollisionContext.empty()));
+    if (hit.getType() == HitResult.Type.MISS) {
+      return false;
+    }
+    double reach = eye.distanceTo(to) - OCCLUSION_SLACK;
+    return hit.getLocation().distanceToSqr(eye) < reach * reach;
   }
 
   /**
@@ -247,7 +374,8 @@ final class DotRenderer {
       RenderType type,
       List<Dot> dots,
       Vector3f up,
-      Vector3f left) {
+      Vector3f left,
+      double scale) {
     if (dots.isEmpty()) {
       return;
     }
@@ -255,7 +383,9 @@ final class DotRenderer {
         .submitNodeCollector()
         .order(SUBMIT_ORDER)
         .submitCustomGeometry(
-            poseStack, type, (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left)));
+            poseStack,
+            type,
+            (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left, scale)));
   }
 
   /**
@@ -287,12 +417,16 @@ final class DotRenderer {
     return out;
   }
 
-  /** Camera-relative path dots and the hit marker at the path's last point. */
-  record Layout(List<Dot> dots, Dot marker) {}
+  /**
+   * Camera-relative dots: the exact path (depth-tested), the lead-in arc from the hand split by
+   * whether the real point behind it is visible, and the hit marker at the path's last point.
+   */
+  record Layout(List<Dot> dots, List<Dot> overlay, List<Dot> overlayHidden, Dot marker) {}
 
   /**
    * Lays out the dots of a path. {@code pulse} in [0, 1] dims and enlarges the path dots (not the
-   * marker).
+   * marker); {@code hand} is the offset of the drawn start from the real one (zero outside first
+   * person).
    */
   static Layout layout(
       List<Vec3d> path,
@@ -301,8 +435,12 @@ final class DotRenderer {
       Vec3d markerAt,
       Vec3 cam,
       double pixelsPerRadian,
-      double pulse) {
-    List<Vec3d> lattice = resample(path);
+      double pulse,
+      Vec3d hand,
+      Predicate<Vec3d> occluded) {
+    List<Vec3d> real = resample(path);
+    double[] weights = handWeights(real.size(), hand);
+    List<Vec3d> lattice = fromHand(real, weights, hand);
     double minAngle = MIN_RADIUS_PX / pixelsPerRadian;
     double maxAngle = MAX_RADIUS_PX / pixelsPerRadian;
     int n = lattice.size();
@@ -317,6 +455,8 @@ final class DotRenderer {
     }
 
     List<Dot> dots = new ArrayList<>();
+    List<Dot> overlay = new ArrayList<>();
+    List<Dot> overlayHidden = new ArrayList<>();
     Dot marker = hit && markerAt != null ? marker(markerAt, face, cam, pixelsPerRadian) : null;
     // Path dots under the marker would only show as clipped bits around it.
     double clear = marker == null ? 0.0 : marker.radius() * 2.0;
@@ -339,10 +479,17 @@ final class DotRenderer {
       double level = Math.clamp(Math.log(ratio) / Math.log(2.0), 0.0, MAX_LEVEL);
       double alpha = base * levelAlpha(k, level) * (1.0 - PULSE_ALPHA * pulse);
       if (alpha > 0.02) {
-        dots.add(new Dot(p[0], p[1], p[2], angle * distance * (1.0 + PULSE_SIZE * pulse), alpha));
+        Dot dot = new Dot(p[0], p[1], p[2], angle * distance * (1.0 + PULSE_SIZE * pulse), alpha);
+        if (weights[k] <= ARC_EPSILON) {
+          dots.add(dot);
+        } else if (occluded.test(real.get(k))) {
+          overlayHidden.add(dot);
+        } else {
+          overlay.add(dot);
+        }
       }
     }
-    return new Layout(dots, marker);
+    return new Layout(dots, overlay, overlayHidden, marker);
   }
 
   /**
@@ -400,6 +547,37 @@ final class DotRenderer {
     return 0.0;
   }
 
+  /**
+   * How far each lattice point is moved towards the bow hand, from 1 at the start to 0 at {@link
+   * #MERGE_DISTANCE}; all zero outside first person and for close hits. Lattice point {@code k}
+   * lies {@code k * LATTICE} blocks along the flight.
+   */
+  static double[] handWeights(int size, Vec3d hand) {
+    double[] weights = new double[size];
+    if (hand.lengthSqr() == 0.0 || size == 0) {
+      return weights;
+    }
+    // Close hits keep the plain path: the arc would not merge before the target. The arc fades in
+    // between these path lengths so it does not pop while the aim sweeps over the threshold.
+    double length = size * LATTICE;
+    double strength = Math.clamp((length - HAND_MIN_PATH) / (HAND_FULL_PATH - HAND_MIN_PATH), 0, 1);
+    strength = strength * strength * (3.0 - 2.0 * strength);
+    for (int k = 0; k < size && strength > 0.0; k++) {
+      double t = Math.clamp(k * LATTICE / MERGE_DISTANCE, 0.0, 1.0);
+      weights[k] = strength * (1.0 - t * t * (3.0 - 2.0 * t));
+    }
+    return weights;
+  }
+
+  /** The lattice with each point moved towards the bow hand by its weight. */
+  static List<Vec3d> fromHand(List<Vec3d> lattice, double[] weights, Vec3d hand) {
+    List<Vec3d> out = new ArrayList<>(lattice.size());
+    for (int k = 0; k < lattice.size(); k++) {
+      out.add(weights[k] > 0.0 ? lattice.get(k).add(hand.scale(weights[k])) : lattice.get(k));
+    }
+    return out;
+  }
+
   /** Points every {@link #LATTICE} blocks along the path, starting at its first point. */
   static List<Vec3d> resample(List<Vec3d> path) {
     List<Vec3d> out = new ArrayList<>();
@@ -445,8 +623,9 @@ final class DotRenderer {
 
   /** One dot: camera-relative center, world radius and opacity. */
   record Dot(double dx, double dy, double dz, double radius, double alpha) {
-    void emit(PoseStack.Pose pose, VertexConsumer buffer, Vector3f up, Vector3f left) {
-      float r = (float) radius;
+    void emit(
+        PoseStack.Pose pose, VertexConsumer buffer, Vector3f up, Vector3f left, double scale) {
+      float r = (float) (radius * scale);
       float rx = (float) dx;
       float ry = (float) dy;
       float rz = (float) dz;

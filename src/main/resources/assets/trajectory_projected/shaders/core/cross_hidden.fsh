@@ -10,10 +10,10 @@ out vec4 fragColor;
 // The cross seen through terrain: a fainter core inside a dark outline (060410), like hidden dots.
 const vec3 OUTLINE = vec3(0.0235, 0.0157, 0.0627);
 const float ARM = 0.62;
-const float OUTER = 0.27;
-const float INNER = 0.14;
+const float OUTER = 0.34;
+const float INNER = 0.11;
 const float CORE_ALPHA = 0.45;
-const float OUTLINE_ALPHA = 0.8;
+const float OUTLINE_ALPHA = 0.9;
 
 float segment(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a;
