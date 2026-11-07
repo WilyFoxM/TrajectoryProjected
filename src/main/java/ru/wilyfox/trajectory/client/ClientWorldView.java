@@ -145,6 +145,11 @@ final class ClientWorldView implements WorldView {
     return level.getMinY();
   }
 
+  @Override
+  public double maxY() {
+    return level.getMaxY();
+  }
+
   static Vec3 vanilla(Vec3d v) {
     return new Vec3(v.x(), v.y(), v.z());
   }
