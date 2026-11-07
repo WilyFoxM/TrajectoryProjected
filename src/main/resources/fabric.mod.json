@@ -8,6 +8,7 @@
     "WilyFox"
   ],
   "license": "MIT",
+  "icon": "assets/trajectory_projected/icon.png",
   "environment": "client",
   "depends": {
     "fabricloader": ">=0.19.3",
