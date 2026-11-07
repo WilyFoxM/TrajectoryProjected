@@ -1,7 +1,6 @@
 package ru.wilyfox.trajectory.sim;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -25,16 +24,16 @@ class BowShotTest {
 
   @Test
   void fullDrawAtTwentyTicks() {
-    BowShot.Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
+    Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
     assertEquals(3.0F, launch.power());
-    assertTrue(launch.critical());
-    assertFalse(BowShot.launch(standing(0.0F, 0.0F), 19).critical());
+    assertEquals(1.0F, BowShot.powerForTicks(20));
+    assertTrue(BowShot.powerForTicks(19) < 1.0F);
     assertEquals(3.0F, BowShot.launch(standing(0.0F, 0.0F), 400).power());
   }
 
   @Test
   void spawnsAtEyeHeightMinusFloatTenth() {
-    BowShot.Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
+    Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
     double expectedY = (FEET.y() + 1.62F) - 0.1F;
     assertEquals(new Vec3d(FEET.x(), expectedY, FEET.z()), launch.spawn());
     assertNotEquals(FEET.y() + 1.52, launch.spawn().y(), "float constants are not exact decimals");
@@ -53,8 +52,8 @@ class BowShotTest {
 
   @Test
   void yawIsWrappedLikeTheServer() {
-    BowShot.Launch wrapped = BowShot.launch(standing(90.7F, 12.3F), 20);
-    BowShot.Launch unwrapped = BowShot.launch(standing(90.7F + 3600.0F, 12.3F), 20);
+    Launch wrapped = BowShot.launch(standing(90.7F, 12.3F), 20);
+    Launch unwrapped = BowShot.launch(standing(90.7F + 3600.0F, 12.3F), 20);
     assertEquals(wrapped.direction(), unwrapped.direction());
     assertEquals(-90.0F, VanillaMath.serverPitch(270.0F));
     assertEquals(90.0F, VanillaMath.serverPitch(135.0F));
@@ -69,15 +68,15 @@ class BowShotTest {
     assertEquals(new Vec3d(0.2, 0.0, -0.1), BowShot.launch(grounded, 20).inherited());
     assertEquals(moved, BowShot.launch(airborne, 20).inherited());
 
-    BowShot.Launch launch = BowShot.launch(airborne, 20);
+    Launch launch = BowShot.launch(airborne, 20);
     Vec3d expected = launch.direction().scale(3.0F).add(moved);
     assertEquals(expected, launch.nominalVelocity());
   }
 
   @Test
   void spreadIsAddedBeforeScaling() {
-    BowShot.Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
-    double s = BowShot.SPREAD_HALF_WIDTH;
+    Launch launch = BowShot.launch(standing(0.0F, 0.0F), 20);
+    double s = Launch.SPREAD_HALF_WIDTH;
     Vec3d spread = new Vec3d(s, -s, s);
     Vec3d expected = launch.direction().add(spread).scale(launch.power());
     assertEquals(expected, launch.velocity(spread));

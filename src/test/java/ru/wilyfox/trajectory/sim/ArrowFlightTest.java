@@ -158,7 +158,7 @@ class ArrowFlightTest {
   void fullBowShotOnFlatGround() {
     ShooterState shooter =
         new ShooterState(new Vec3d(0.5, 64.0, 0.5), 1.62F, 0.0F, -10.0F, Vec3d.ZERO, true);
-    BowShot.Launch launch = BowShot.launch(shooter, 20);
+    Launch launch = BowShot.launch(shooter, 20);
     Trajectory t =
         ArrowFlight.simulate(
             launch.spawn(), launch.nominalVelocity(), TestWorld.floorAt(64.0), 600);

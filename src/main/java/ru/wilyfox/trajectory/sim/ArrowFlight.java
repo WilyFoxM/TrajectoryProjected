@@ -134,7 +134,12 @@ public final class ArrowFlight {
    * touches the arrow box expanded by the velocity and by one block.
    */
   private static boolean outsideShooter(WorldView world, Vec3d pos, Vec3d vel) {
-    Aabb area = box(pos).expandTowards(vel).inflate(1.0);
+    return outsideShooter(world, box(pos), vel);
+  }
+
+  /** {@link #outsideShooter(WorldView, Vec3d, Vec3d)} for a projectile box of any size. */
+  static boolean outsideShooter(WorldView world, Aabb projectile, Vec3d vel) {
+    Aabb area = projectile.expandTowards(vel).inflate(1.0);
     for (WorldView.EntityTarget target : world.entities(area)) {
       if (target.shooterGroup() && area.intersects(target.box())) {
         return false;
@@ -147,7 +152,7 @@ public final class ArrowFlight {
    * {@code ProjectileUtil.getManyEntityHitResult} with {@code includeFromEntity = false}: exact box
    * hits, and hits within the margin that are confirmed by a ray towards the box center.
    */
-  private static List<Hit> entityHits(
+  static List<Hit> entityHits(
       WorldView world, Vec3d from, Vec3d to, Aabb area, float margin, boolean leftOwner) {
     List<Hit> hits = new ArrayList<>();
     for (WorldView.EntityTarget target : world.entities(area)) {
@@ -185,5 +190,5 @@ public final class ArrowFlight {
     return hits;
   }
 
-  private record Hit(WorldView.EntityTarget target, Vec3d location) {}
+  record Hit(WorldView.EntityTarget target, Vec3d location) {}
 }
