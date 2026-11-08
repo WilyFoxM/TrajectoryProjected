@@ -29,7 +29,9 @@ import ru.wilyfox.trajectory.sim.SpreadZone;
 import ru.wilyfox.trajectory.sim.ThrowShot;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.TridentShot;
+import ru.wilyfox.trajectory.sim.Vec3d;
 import ru.wilyfox.trajectory.sim.WindChargeShot;
+import ru.wilyfox.trajectory.sim.WorldView;
 
 /**
  * Predicts what the player's weapon would fire, once per client tick: the bow or the trident being
@@ -118,7 +120,8 @@ public final class ShotPreview {
               shot.livingTarget(),
               zone,
               from,
-              ZoneSurfaces.patches(minecraft.level, zone, from)));
+              shot.shadowsFrom(),
+              ZoneSurfaces.patches(minecraft.level, zone, from, shot.shadowsFrom())));
     }
     return new Prediction(
         next.weapon(), next.hand(), List.copyOf(shots), next.ticksHeld(), next.gameTime());
@@ -347,22 +350,41 @@ public final class ShotPreview {
       Flight flight,
       Launch launch,
       List<SpreadZone.Variant> variants) {
-    Trajectory path =
-        flight.simulate(
-            launch.spawn(), launch.nominalVelocity(), new ClientWorldView(level, player));
+    WorldView world = new ClientWorldView(level, player);
+    Trajectory path = flight.simulate(launch.spawn(), launch.nominalVelocity(), world);
     boolean living =
         path.end() == Trajectory.End.ENTITY
             && level.getEntity(path.entity().id()) instanceof LivingEntity;
     SpreadZone.Zone zone = null;
+    Vec3d shadowsFrom = launch.spawn();
     if (TrajectoryConfig.get().showsZone()
         && path.end() == Trajectory.End.BLOCK
         && path.impact() != null) {
       // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
       // by 0.05 per axis, which skews a direction taken from the last two points of a short final
       // step.
-      zone = SpreadZone.compute(variants, flight, path.impact(), path.arrival());
+      Vec3d wet = firstInWater(path, flight, world);
+      if (wet == null) {
+        zone = SpreadZone.compute(variants, flight, path.impact(), path.arrival());
+      } else {
+        zone =
+            SpreadZone.computeThroughWater(variants, flight, path.impact(), path.arrival(), world);
+        // Below the surface the shot bends so much that the line back from the hit says nothing
+        // about what it passed above the water.
+        shadowsFrom = wet;
+      }
     }
-    return new Shot(flight, launch, path, living, zone, null, List.of());
+    return new Shot(flight, launch, path, living, zone, null, shadowsFrom, List.of());
+  }
+
+  /** The first point of a path in water, or {@code null} if it stays out of water. */
+  private static Vec3d firstInWater(Trajectory path, Flight flight, WorldView world) {
+    for (Vec3d point : path.points()) {
+      if (world.isInWater(flight.box(point))) {
+        return point;
+      }
+    }
+    return null;
   }
 
   /** {@code 1 + Fireworks.flightDuration()}, as {@code FireworkRocketEntity} reads it. */
@@ -409,7 +431,8 @@ public final class ShotPreview {
    * in a living entity (mobs, players, armor stands), and the spread zone with the lit block
    * surfaces it falls on ({@code null} and empty unless the path ends in a block). {@code zoneFrom}
    * is the zone frames blend from until the next tick, which the surfaces also cover; {@code null}
-   * if the zone is drawn where it is, because it just appeared or jumped.
+   * if the zone is drawn where it is, because it just appeared or jumped. Nothing behind {@code
+   * shadowsFrom} shades the surfaces.
    */
   public record Shot(
       Flight flight,
@@ -418,6 +441,7 @@ public final class ShotPreview {
       boolean livingTarget,
       SpreadZone.Zone zone,
       SpreadZone.Zone zoneFrom,
+      Vec3d shadowsFrom,
       List<ZoneSurfaces.Patch> zonePatches) {}
 
   /**

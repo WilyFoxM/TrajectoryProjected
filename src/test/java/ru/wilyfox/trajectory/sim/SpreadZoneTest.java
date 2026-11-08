@@ -3,6 +3,7 @@ package ru.wilyfox.trajectory.sim;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -123,6 +124,88 @@ class SpreadZoneTest {
   }
 
   /** The rings hold their shares of shots they were not fitted on. */
+  @Test
+  void aShotSinkingInWaterGetsASmallZone() {
+    TestWorld world = TestWorld.floorAt(48.0);
+    world.water.add(new Aabb(-1000, 48, -1000, 1000, 62, 1000));
+    Launch launch = launch(0.0F);
+    Trajectory path = ARROW.simulate(launch.spawn(), launch.nominalVelocity(), world);
+    assertEquals(Trajectory.End.BLOCK, path.end());
+    SpreadZone.Zone wet =
+        SpreadZone.computeThroughWater(
+            List.of(new SpreadZone.Variant(launch, 1.0)),
+            ARROW,
+            path.impact(),
+            path.arrival(),
+            world);
+    SpreadZone.Zone dry = SpreadZone.compute(launch, ARROW, path.impact(), path.arrival());
+    // Free air flies past the bottom and crosses its plane far away.
+    assertTrue(
+        dry.axisU().length() > 3.0 * wet.axisU().length(),
+        "free air " + dry.axisU().length() + ", through water " + wet.axisU().length());
+
+    // Real flights with the vanilla spread come to rest inside the zone.
+    SplittableRandom random = new SplittableRandom(7L);
+    double s = Launch.SPREAD_HALF_WIDTH;
+    int outside = 0;
+    for (int i = 0; i < 400; i++) {
+      Vec3d offset =
+          new Vec3d(
+              s * (random.nextDouble() - random.nextDouble()),
+              s * (random.nextDouble() - random.nextDouble()),
+              s * (random.nextDouble() - random.nextDouble()));
+      Trajectory shot = ARROW.simulate(launch.spawn(), launch.velocity(offset), world);
+      assertEquals(Trajectory.End.BLOCK, shot.end());
+      double[] c = wet.coordinates(shot.impact());
+      if (Math.hypot(c[0], c[1]) > 1.0) {
+        outside++;
+      }
+    }
+    assertEquals(0, outside, "shots outside the zone");
+  }
+
+  @Test
+  void shotsScatteringWidelyThroughWaterHaveNoZone() {
+    // A thin column of water on the way: the shot through it drops, the rest of the spread misses
+    // it and flies on far beyond.
+    TestWorld world = TestWorld.floorAt(0.0);
+    Launch launch = launch(0.0F);
+    Trajectory air = ARROW.simulate(launch.spawn(), launch.nominalVelocity(), world);
+    Vec3d entry = air.points().stream().filter(point -> point.y() < 55.0).findFirst().orElseThrow();
+    world.water.add(
+        new Aabb(
+            entry.x() - 0.1,
+            entry.y() - 2.0,
+            entry.z() - 0.5,
+            entry.x() + 0.1,
+            entry.y() + 0.1,
+            entry.z() + 0.5));
+    Trajectory path = ARROW.simulate(launch.spawn(), launch.nominalVelocity(), world);
+    assertEquals(Trajectory.End.BLOCK, path.end());
+    assertNull(
+        SpreadZone.computeThroughWater(
+            List.of(new SpreadZone.Variant(launch, 1.0)),
+            ARROW,
+            path.impact(),
+            path.arrival(),
+            world));
+  }
+
+  @Test
+  void aShotInTheWorldStopsAtABlockBeforeThePlane() {
+    TestWorld world = TestWorld.empty();
+    world.solids.add(new Aabb(-5, 60, 10, 5, 70, 11));
+    Vec3d crossing =
+        SpreadZone.crossingInWorld(
+            new Vec3d(0, 64, 0),
+            new Vec3d(0, 0, 3),
+            ARROW,
+            new Vec3d(0, 64, 30),
+            new Vec3d(0, 0, 1),
+            world);
+    assertEquals(10.0, crossing.z(), 1.0e-9);
+  }
+
   private static SpreadZone.Zone zoneAt(Vec3d center, Vec3d u, Vec3d v) {
     return new SpreadZone.Zone(center, u, v, new Vec3d(0, 0, 1), 0.5, 0.9);
   }

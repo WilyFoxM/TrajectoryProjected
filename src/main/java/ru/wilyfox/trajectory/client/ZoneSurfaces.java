@@ -62,9 +62,11 @@ final class ZoneSurfaces {
 
   /**
    * The surfaces of {@code zone}, and of the way to it from {@code from} if frames blend from there
-   * ({@code null} if not).
+   * ({@code null} if not). Nothing behind {@code shadowsFrom} casts a shadow: behind the shooter, a
+   * wall or the ground is on the straight line back from the hit, but not on the way of the shot.
    */
-  static List<Patch> patches(ClientLevel level, SpreadZone.Zone zone, SpreadZone.Zone from) {
+  static List<Patch> patches(
+      ClientLevel level, SpreadZone.Zone zone, SpreadZone.Zone from, Vec3d shadowsFrom) {
     List<SpreadZone.Zone> way = from == null ? List.of(zone) : from.waypoints(zone);
     double reach = from == null ? REACH_STILL : REACH_MOVING;
     Vec3d dir = zone.direction();
@@ -141,6 +143,7 @@ final class ZoneSurfaces {
           level,
           way,
           dir,
+          shadowsFrom,
           reach,
           depth,
           surfacePositions.get(i),
@@ -214,6 +217,7 @@ final class ZoneSurfaces {
       ClientLevel level,
       List<SpreadZone.Zone> way,
       Vec3d dir,
+      Vec3d shadowsFrom,
       double reach,
       double depth,
       BlockPos pos,
@@ -236,7 +240,7 @@ final class ZoneSurfaces {
         continue;
       }
       Vec3d lift = new Vec3d(nx * LIFT, ny * LIFT, nz * LIFT);
-      for (List<Vec3d> piece : FaceShadow.litPieces(face, dir, casters)) {
+      for (List<Vec3d> piece : FaceShadow.litPieces(face, dir, casters, shadowsFrom)) {
         List<Vec3d> corners = new ArrayList<>(piece.size());
         for (Vec3d corner : piece) {
           corners.add(corner.add(lift));

@@ -136,6 +136,28 @@ final class DotRenderer {
       RenderType.create(
           MOD_ID + "_zone", RenderSetup.builder(ZONE).sortOnUpload().createRenderSetup());
 
+  /**
+   * Over a shader pack, the pack's temporal anti-aliasing has drawn the level shifted by a part of
+   * a pixel, differently each frame, and the zone is not shifted. On a surface seen at an angle
+   * that moves its depth by far more than the zone's lift, so the whole zone would pass or fail the
+   * depth test frame by frame. A bias following the surface's slope covers that shift.
+   */
+  private static final RenderPipeline ZONE_OVER_SHADERS =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/zone_over_shaders"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/zone"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(
+              new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false, 2.0F, 0.0F))
+          .withCull(false)
+          .build();
+
+  private static final RenderType ZONES_OVER_SHADERS =
+      RenderType.create(
+          MOD_ID + "_zone_over_shaders",
+          RenderSetup.builder(ZONE_OVER_SHADERS).sortOnUpload().createRenderSetup());
+
   private static final RenderType DOTS =
       RenderType.create(
           MOD_ID + "_dots", RenderSetup.builder(VISIBLE).sortOnUpload().createRenderSetup());
@@ -506,7 +528,7 @@ final class DotRenderer {
         context,
         SUBMIT_ORDER - 1,
         context.poseStack(),
-        ZONES,
+        AfterShaders.active() ? ZONES_OVER_SHADERS : ZONES,
         (pose, buffer) -> {
           for (ZoneSurfaces.Patch patch : patches) {
             // A convex polygon as a fan of quads; an odd last one repeats its final corner.
