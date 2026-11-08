@@ -24,7 +24,8 @@ Every shot also carries the server's random spread, which no line can show. Arou
 the hit, a spread zone falls on the blocks like a shadow and marks where the
 projectile can actually land.
 
-Nothing is released yet; the first version is in preparation.
+This is the first release, 0.1.0, and it is a beta. Only the bow has been measured
+in game so far; see [Accuracy](#accuracy).
 
 ## What it shows
 
@@ -74,7 +75,9 @@ Nothing is released yet; the first version is in preparation.
 ## Getting started
 
 Install **Fabric Loader 0.19.3+**, **Fabric API 0.161.0+26.2** and **Java 25**,
-then place the Trajectory Projected JAR in your Minecraft instance's `mods` folder.
+then place the Trajectory Projected JAR from
+[Releases](https://github.com/WilyFoxM/TrajectoryProjected/releases) in your
+Minecraft instance's `mods` folder.
 Nothing needs to be installed on the server.
 
 Press **F7** in-game to open settings. A key to turn trajectories on and off can be
