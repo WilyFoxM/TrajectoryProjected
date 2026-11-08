@@ -1,3 +1,5 @@
+import net.fabricmc.loom.task.prod.ClientProductionRunTask
+
 plugins {
     id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'com.diffplug.spotless' version '8.10.4'
@@ -125,6 +127,50 @@ sourceSets {
         compileClasspath += dev.output
         runtimeClasspath += dev.output
     }
+}
+
+// Starts the built jars from a real mods folder; requires local fixtures.
+// The release jar alone by default, with the development add-on under -PsmokeWithDev.
+sourceSets {
+    releaseSmoke {
+        compileClasspath += main.output + main.compileClasspath
+    }
+}
+
+configurations {
+    releaseSmokeMods {
+        transitive = false
+    }
+}
+
+dependencies {
+    releaseSmokeMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    releaseSmokeMods fabricApi.module("fabric-client-gametest-api-v1", project.fabric_api_version)
+}
+
+def releaseSmokeJar = tasks.register('releaseSmokeJar', Jar) {
+    archiveBaseName = 'trajectory-projected-release-smoke'
+    destinationDirectory = layout.buildDirectory.dir('release-smoke')
+    from sourceSets.releaseSmoke.output
+}
+
+def syncReleaseSmokeMods = tasks.register('syncReleaseSmokeMods', Sync) {
+    from tasks.named('jar'), releaseSmokeJar, configurations.releaseSmokeMods
+    if (project.hasProperty('smokeWithDev')) {
+        from tasks.named('devJar')
+    }
+    into layout.buildDirectory.dir('run/releaseSmoke/mods')
+}
+
+tasks.register('runReleaseSmoke', ClientProductionRunTask) {
+    group = 'verification'
+    onlyIf('local fixtures are available') { !sourceSets.releaseSmoke.allJava.empty }
+    dependsOn syncReleaseSmokeMods
+    jvmArgs.add('-Dfabric.client.gametest')
+    if (project.hasProperty('smokeWithDev')) {
+        jvmArgs.add('-Dtrajectory.smoke.dev=true')
+    }
+    runDir = layout.buildDirectory.dir('run/releaseSmoke')
 }
 
 apply from: 'gradle/quality.gradle'
