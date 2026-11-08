@@ -24,11 +24,11 @@ import ru.wilyfox.trajectory.sim.Vec3d;
 import ru.wilyfox.trajectory.sim.WorldView;
 
 /** {@link WorldView} over the client level, using the same vanilla calls an arrow makes. */
-final class ClientWorldView implements WorldView {
+public final class ClientWorldView implements WorldView {
   private final ClientLevel level;
   private final Player shooter;
 
-  ClientWorldView(ClientLevel level, Player shooter) {
+  public ClientWorldView(ClientLevel level, Player shooter) {
     this.level = level;
     this.shooter = shooter;
   }
@@ -154,7 +154,7 @@ final class ClientWorldView implements WorldView {
     return new Vec3(v.x(), v.y(), v.z());
   }
 
-  static Vec3d own(Vec3 v) {
+  public static Vec3d own(Vec3 v) {
     return new Vec3d(v.x, v.y, v.z);
   }
 

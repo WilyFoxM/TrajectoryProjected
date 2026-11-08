@@ -2,6 +2,7 @@ package ru.wilyfox.trajectory.client;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -46,10 +47,16 @@ public final class ShotPreview {
   private static final DrawCounter DRAW = new DrawCounter();
   private static InteractionHand drawHand = InteractionHand.MAIN_HAND;
 
+  private static Consumer<Prediction> bowRelease;
   private static Prediction current;
   private static Prediction previous;
 
   private ShotPreview() {}
+
+  /** Sets who hears about a bow prediction ending in a release; for development tools. */
+  public static void onBowRelease(Consumer<Prediction> listener) {
+    bowRelease = listener;
+  }
 
   /** The prediction for a shot on the next tick; this is what the server will fire. */
   public static Prediction current() {
@@ -77,8 +84,8 @@ public final class ShotPreview {
                 || last.shots().size() != current.shots().size()
             ? null
             : last;
-    if (last != null && last.weapon() == Weapon.BOW && current == null) {
-      ShotLog.released(last);
+    if (bowRelease != null && last != null && last.weapon() == Weapon.BOW && current == null) {
+      bowRelease.accept(last);
     }
   }
 
