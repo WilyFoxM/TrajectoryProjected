@@ -1,4 +1,4 @@
-package ru.wilyfox.trajectory.mixin;
+package ru.wilyfox.trajectory.dev.mixin;
 
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import org.spongepowered.asm.mixin.Mixin;

@@ -3,7 +3,6 @@
   "package": "ru.wilyfox.trajectory.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "AbstractArrowAccessor",
     "GameRendererAfterLevelMixin",
     "HudCrosshairMixin",
     "LocalPlayerAccessor",
