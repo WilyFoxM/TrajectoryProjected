@@ -25,6 +25,11 @@ public final class TrajectoryConfig {
 
   private static TrajectoryConfig instance = new TrajectoryConfig();
 
+  /** Whether any part of the spread zone is to be shown. */
+  public boolean showsZone() {
+    return spreadZone && (zoneFull || zoneHalfRing || zoneWideRing);
+  }
+
   public int schemaVersion = 1;
 
   /** Master switch: no prediction, line or crosshair change while off. */
@@ -47,6 +52,18 @@ public final class TrajectoryConfig {
 
   /** Where the server's random spread can put the arrow, shown on the blocks around the hit. */
   public boolean spreadZone = true;
+
+  /** The zone reaches its full extent, the edge no vanilla shot crosses. */
+  public boolean zoneFull = true;
+
+  /** A ring where about half of the shots land inside. */
+  public boolean zoneHalfRing = true;
+
+  /** A ring where about 90 % of the shots land inside. */
+  public boolean zoneWideRing = false;
+
+  /** On a server, the zone also holds a partial draw counted a tick more or less. */
+  public boolean zoneTickCorrection = false;
 
   /** A larger dot (or cross) where the arrow will hit. */
   public boolean hitMarker = true;

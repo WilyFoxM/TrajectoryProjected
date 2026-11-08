@@ -37,7 +37,15 @@
   "trajectory_projected.setting.show_hidden": "Показывать за блоками",
   "trajectory_projected.setting.show_hidden.description": "Части пути за блоками рисуются бледнее и с обводкой.",
   "trajectory_projected.setting.spread_zone": "Зона разброса",
-  "trajectory_projected.setting.spread_zone.description": "Куда случайный разброс сервера может отправить стрелу: тень на блоках вокруг точки попадания. Большинство выстрелов ложится во внутреннее кольцо.",
+  "trajectory_projected.setting.spread_zone.description": "Куда случайный разброс сервера может отправить стрелу: тень на блоках вокруг точки попадания. Что именно показывать, выбирается ниже.",
+  "trajectory_projected.setting.zone_full": "Полный разброс",
+  "trajectory_projected.setting.zone_full.description": "Зона доходит до края, за который выстрелы не выходят. Если выключено, она заканчивается на самом широком включённом кольце.",
+  "trajectory_projected.setting.zone_half_ring": "Кольцо половины выстрелов",
+  "trajectory_projected.setting.zone_half_ring.description": "Внутрь этого кольца ложится примерно половина выстрелов.",
+  "trajectory_projected.setting.zone_wide_ring": "Кольцо 90%% выстрелов",
+  "trajectory_projected.setting.zone_wide_ring.description": "Внутрь этого кольца ложится примерно 90%% выстрелов.",
+  "trajectory_projected.setting.zone_tick_correction": "Учитывать момент натяжения",
+  "trajectory_projected.setting.zone_tick_correction.description": "На сервере неполное натяжение может засчитаться на тик больше или меньше, чем здесь. Зона покроет и это: точнее, но больше и заметнее. В одиночной игре и при полном натяжении ничего не меняет.",
   "trajectory_projected.setting.hit_marker": "Маркер попадания",
   "trajectory_projected.setting.hit_marker.description": "Точка крупнее там, куда попадёт стрела.",
   "trajectory_projected.setting.living_pulse": "Пульсация на живой цели",
@@ -46,5 +54,6 @@
   "trajectory_projected.setting.living_cross.description": "Маркер попадания становится крестиком, когда стрела попадёт в моба или игрока.",
   "trajectory_projected.setting.crosshair_turn": "Поворот прицела",
   "trajectory_projected.setting.crosshair_turn.description": "Прицел превращается в крестик, когда стрела попадёт в моба или игрока.",
-  "trajectory_projected.unavailable.hit_marker_off": "Включите маркер попадания, чтобы использовать эту настройку."
+  "trajectory_projected.unavailable.hit_marker_off": "Включите маркер попадания, чтобы использовать эту настройку.",
+  "trajectory_projected.unavailable.spread_zone_off": "Включите зону разброса, чтобы использовать эту настройку."
 }

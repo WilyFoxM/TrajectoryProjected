@@ -84,6 +84,12 @@ final class SettingsCatalog {
     options.add(toggle("far_dimming", Page.LINE, () -> c().farDimming, v -> c().farDimming = v));
     options.add(toggle("show_hidden", Page.LINE, () -> c().showHidden, v -> c().showHidden = v));
     options.add(toggle("spread_zone", Page.TARGET, () -> c().spreadZone, v -> c().spreadZone = v));
+    options.add(zoneToggle("zone_full", () -> c().zoneFull, v -> c().zoneFull = v));
+    options.add(zoneToggle("zone_half_ring", () -> c().zoneHalfRing, v -> c().zoneHalfRing = v));
+    options.add(zoneToggle("zone_wide_ring", () -> c().zoneWideRing, v -> c().zoneWideRing = v));
+    options.add(
+        zoneToggle(
+            "zone_tick_correction", () -> c().zoneTickCorrection, v -> c().zoneTickCorrection = v));
     options.add(toggle("hit_marker", Page.TARGET, () -> c().hitMarker, v -> c().hitMarker = v));
     options.add(
         toggle("living_pulse", Page.TARGET, () -> c().livingPulse, v -> c().livingPulse = v));
@@ -113,6 +119,11 @@ final class SettingsCatalog {
 
   private static Option toggle(String id, Page page, BooleanSupplier get, Consumer<Boolean> set) {
     return toggle(id, page, get, set, () -> null);
+  }
+
+  private static Option zoneToggle(String id, BooleanSupplier get, Consumer<Boolean> set) {
+    return toggle(
+        id, Page.TARGET, get, set, () -> c().spreadZone ? null : reason("spread_zone_off"));
   }
 
   private static Option toggle(

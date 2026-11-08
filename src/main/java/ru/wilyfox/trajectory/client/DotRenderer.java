@@ -253,6 +253,12 @@ final class DotRenderer {
   private static final double PULSE_MARKER_SIZE = 0.2;
   private static final double PULSE_EASE_MS = 180.0;
 
+  /** Bits of the zone's vertex color blue channel, read back in {@code zone.fsh}. */
+  private static final int ZONE_FULL = 1;
+
+  private static final int ZONE_HALF_RING = 2;
+  private static final int ZONE_WIDE_RING = 4;
+
   /** Opacity at the end of an uncertain tail, relative to the certain path. */
   private static final double UNCERTAIN_ALPHA = 0.2;
 
@@ -365,7 +371,7 @@ final class DotRenderer {
             pulse,
             hand,
             occluded);
-    if (config.spreadZone && current.zone() != null && !current.zonePatches().isEmpty()) {
+    if (config.showsZone() && current.zone() != null && !current.zonePatches().isEmpty()) {
       SpreadZone.Zone zone =
           previous != null && previous.zone() != null
               ? SpreadZone.Zone.blend(previous.zone(), current.zone(), partial)
@@ -486,8 +492,16 @@ final class DotRenderer {
     if (alpha <= 0.0) {
       return;
     }
+    TrajectoryConfig config = TrajectoryConfig.get();
+    int parts =
+        (config.zoneFull ? ZONE_FULL : 0)
+            | (config.zoneHalfRing ? ZONE_HALF_RING : 0)
+            | (config.zoneWideRing ? ZONE_WIDE_RING : 0);
     int color =
-        ((int) Math.round(255 * alpha) << 24) | ((int) Math.round(255 * zone.coreRatio()) << 16);
+        ((int) Math.round(255 * alpha) << 24)
+            | ((int) Math.round(255 * zone.coreRatio()) << 16)
+            | ((int) Math.round(255 * zone.wideRatio()) << 8)
+            | parts;
     emit(
         context,
         SUBMIT_ORDER - 1,

@@ -2,6 +2,7 @@ package ru.wilyfox.trajectory.sim;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.SplittableRandom;
 
@@ -13,19 +14,25 @@ import java.util.SplittableRandom;
  * of offsets — the eight corners of that cube and a seeded triangle sample — is flown in free air
  * up to the plane through the predicted hit that faces the arrow's arrival direction. An ellipse in
  * that plane is fitted to the crossings: it holds every corner, so by convexity every possible shot
- * up to the small curvature of the mapping, and {@link Zone#coreRatio()} marks where most shots
- * cross. Projected along the arrival direction onto the terrain, it is the zone the arrow can land
- * in.
+ * up to the small curvature of the mapping, and {@link Zone#coreRatio()} and {@link
+ * Zone#wideRatio()} mark where half and 90 % of the shots cross. Projected along the arrival
+ * direction onto the terrain, it is the zone the arrow can land in.
+ *
+ * <p>Several {@link Variant launches} can be flown together when the launch itself is uncertain, as
+ * with a partial draw a server may count a tick differently.
  *
  * <p>Free air is an approximation: water and obstacles on the way are not considered for the
  * spread, only for the predicted path itself.
  */
 public final class SpreadZone {
   /** Seeded triangle samples in addition to the eight corners and the center. */
-  public static final int SAMPLES = 64;
+  public static final int SAMPLES = 128;
 
-  /** Share of samples inside the core ellipse. */
+  /** Share of shots inside the core ellipse. */
   public static final double CORE_SHARE = 0.5;
+
+  /** Share of shots inside the wide ellipse. */
+  public static final double WIDE_SHARE = 0.9;
 
   /** Axes never shrink below this, so a zone seen exactly edge-on stays drawable. */
   private static final double MIN_RADIUS = 0.05;
@@ -41,9 +48,13 @@ public final class SpreadZone {
    * @param axisU first ellipse axis, its length the outer radius along it
    * @param axisV second axis, perpendicular to the first and to {@code direction}
    * @param direction unit arrival direction of the arrow; the zone is projected along it
-   * @param coreRatio radius of the core ellipse relative to the outer one, in (0, 1]
+   * @param coreRatio radius of the ellipse holding half of the shots relative to the outer one, in
+   *     (0, 1]
+   * @param wideRatio radius of the ellipse holding 90 % of the shots relative to the outer one, in
+   *     (0, 1]
    */
-  public record Zone(Vec3d center, Vec3d axisU, Vec3d axisV, Vec3d direction, double coreRatio) {
+  public record Zone(
+      Vec3d center, Vec3d axisU, Vec3d axisV, Vec3d direction, double coreRatio, double wideRatio) {
 
     /**
      * Ellipse coordinates of a world point projected along the direction: the outer edge is at
@@ -66,9 +77,18 @@ public final class SpreadZone {
           lerp(a.axisU, bu, t),
           lerp(a.axisV, bv, t),
           lerp(a.direction, b.direction, t).normalize(),
-          a.coreRatio + (b.coreRatio - a.coreRatio) * t);
+          a.coreRatio + (b.coreRatio - a.coreRatio) * t,
+          a.wideRatio + (b.wideRatio - a.wideRatio) * t);
     }
   }
+
+  /**
+   * One possible launch and how likely it is relative to the others.
+   *
+   * @param launch the launch
+   * @param weight its relative likelihood
+   */
+  public record Variant(Launch launch, double weight) {}
 
   /** The spread offsets used: eight corners, then seeded triangle samples. */
   public static List<Vec3d> offsets() {
@@ -96,6 +116,15 @@ public final class SpreadZone {
    * arrival}. Returns {@code null} if no shot reaches the plane within the flight's tick limit.
    */
   public static Zone compute(Launch launch, Flight flight, Vec3d hit, Vec3d arrival) {
+    return compute(List.of(new Variant(launch, 1.0)), flight, hit, arrival);
+  }
+
+  /**
+   * Fits the zone over several possible launches. {@code hit} and {@code arrival} belong to the
+   * path shown, usually the most likely launch. The outer edge holds the corners of every variant;
+   * the rings are shares of the shots with the variants' weights.
+   */
+  public static Zone compute(List<Variant> variants, Flight flight, Vec3d hit, Vec3d arrival) {
     Vec3d d = arrival.normalize();
     if (d.lengthSqr() == 0.0) {
       return null;
@@ -104,12 +133,17 @@ public final class SpreadZone {
     Vec3d u = basis[0];
     Vec3d v = basis[1];
 
+    // u, v, weight, and whether the point is a shot of the sample rather than a corner.
     List<double[]> points = new ArrayList<>();
-    for (Vec3d offset : offsets()) {
-      Vec3d crossing = crossing(launch.spawn(), launch.velocity(offset), flight, hit, d);
-      if (crossing != null) {
-        Vec3d rel = crossing.subtract(hit);
-        points.add(new double[] {dot(rel, u), dot(rel, v)});
+    List<Vec3d> offsets = offsets();
+    for (Variant variant : variants) {
+      Launch launch = variant.launch();
+      for (int i = 0; i < offsets.size(); i++) {
+        Vec3d crossing = crossing(launch.spawn(), launch.velocity(offsets.get(i)), flight, hit, d);
+        if (crossing != null) {
+          Vec3d rel = crossing.subtract(hit);
+          points.add(new double[] {dot(rel, u), dot(rel, v), variant.weight(), i >= 8 ? 1.0 : 0.0});
+        }
       }
     }
     if (points.size() < 8) {
@@ -120,14 +154,16 @@ public final class SpreadZone {
     double sxx = 0;
     double sxy = 0;
     double syy = 0;
+    double total = 0;
     for (double[] p : points) {
-      sxx += p[0] * p[0];
-      sxy += p[0] * p[1];
-      syy += p[1] * p[1];
+      sxx += p[2] * p[0] * p[0];
+      sxy += p[2] * p[0] * p[1];
+      syy += p[2] * p[1] * p[1];
+      total += p[2];
     }
-    sxx /= points.size();
-    sxy /= points.size();
-    syy /= points.size();
+    sxx /= total;
+    sxy /= total;
+    syy /= total;
     double angle = 0.5 * Math.atan2(2 * sxy, sxx - syy);
     double c = Math.cos(angle);
     double sn = Math.sin(angle);
@@ -147,15 +183,47 @@ public final class SpreadZone {
     if (outer <= 0.0) {
       return null;
     }
-    double[] sorted = m.clone();
-    Arrays.sort(sorted);
-    double core = sorted[(int) Math.floor(CORE_SHARE * (sorted.length - 1))];
+    double[][] shots = shotsByRadius(points, m);
 
     Vec3d e1 = u.scale(c).add(v.scale(sn));
     Vec3d e2 = u.scale(-sn).add(v.scale(c));
     Vec3d axisU = e1.scale(Math.max(outer * r1, MIN_RADIUS));
     Vec3d axisV = e2.scale(Math.max(outer * r2, MIN_RADIUS));
-    return new Zone(hit, axisU, axisV, d, Math.clamp(core / outer, 0.05, 1.0));
+    return new Zone(
+        hit,
+        axisU,
+        axisV,
+        d,
+        Math.clamp(quantile(shots, CORE_SHARE) / outer, 0.05, 1.0),
+        Math.clamp(quantile(shots, WIDE_SHARE) / outer, 0.05, 1.0));
+  }
+
+  /** The sampled shots as radius and weight, by increasing radius. Corners are not shots. */
+  private static double[][] shotsByRadius(List<double[]> points, double[] radii) {
+    List<double[]> shots = new ArrayList<>();
+    for (int i = 0; i < radii.length; i++) {
+      if (points.get(i)[3] > 0.0) {
+        shots.add(new double[] {radii[i], points.get(i)[2]});
+      }
+    }
+    shots.sort(Comparator.comparingDouble(s -> s[0]));
+    return shots.toArray(new double[0][]);
+  }
+
+  /** The smallest radius holding {@code share} of the shots' weight. */
+  private static double quantile(double[][] shots, double share) {
+    double total = 0;
+    for (double[] s : shots) {
+      total += s[1];
+    }
+    double held = 0;
+    for (double[] s : shots) {
+      held += s[1];
+      if (held >= share * total) {
+        return s[0];
+      }
+    }
+    return shots.length == 0 ? 0.0 : shots[shots.length - 1][0];
   }
 
   /**

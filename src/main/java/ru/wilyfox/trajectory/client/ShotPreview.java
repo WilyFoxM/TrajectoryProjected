@@ -244,7 +244,13 @@ public final class ShotPreview {
     if (launch == null) {
       return null;
     }
-    Shot shot = shot(player, level, Flight.arrow(MAX_TICKS), launch);
+    // Singleplayer counts the same ticks as the client, so only a remote server needs the variants.
+    List<SpreadZone.Variant> variants =
+        TrajectoryConfig.get().zoneTickCorrection
+                && !Minecraft.getInstance().hasSingleplayerServer()
+            ? BowShot.tickVariants(shooter, ticksHeld)
+            : List.of(new SpreadZone.Variant(launch, 1.0));
+    Shot shot = shot(player, level, Flight.arrow(MAX_TICKS), launch, variants);
     return new Prediction(Weapon.BOW, hand, List.of(shot), ticksHeld, level.getGameTime());
   }
 
@@ -290,6 +296,15 @@ public final class ShotPreview {
   }
 
   private static Shot shot(LocalPlayer player, ClientLevel level, Flight flight, Launch launch) {
+    return shot(player, level, flight, launch, List.of(new SpreadZone.Variant(launch, 1.0)));
+  }
+
+  private static Shot shot(
+      LocalPlayer player,
+      ClientLevel level,
+      Flight flight,
+      Launch launch,
+      List<SpreadZone.Variant> variants) {
     Trajectory path =
         flight.simulate(
             launch.spawn(), launch.nominalVelocity(), new ClientWorldView(level, player));
@@ -298,13 +313,13 @@ public final class ShotPreview {
             && level.getEntity(path.entity().id()) instanceof LivingEntity;
     SpreadZone.Zone zone = null;
     List<ZoneSurfaces.Patch> patches = List.of();
-    if (TrajectoryConfig.get().spreadZone
+    if (TrajectoryConfig.get().showsZone()
         && path.end() == Trajectory.End.BLOCK
         && path.impact() != null) {
       // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
       // by 0.05 per axis, which skews a direction taken from the last two points of a short final
       // step.
-      zone = SpreadZone.compute(launch, flight, path.impact(), path.arrival());
+      zone = SpreadZone.compute(variants, flight, path.impact(), path.arrival());
       if (zone != null) {
         patches = ZoneSurfaces.patches(level, zone);
       }
