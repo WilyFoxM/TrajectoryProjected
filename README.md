@@ -105,4 +105,5 @@ Results will be published here with the data once they exist.
 
 ## License
 
-[MIT](LICENSE)
+The code is under the [MIT](LICENSE) license. The mod icon is a simplified recolor of
+Minecraft textures, which belong to Mojang, and is not covered by that license.
