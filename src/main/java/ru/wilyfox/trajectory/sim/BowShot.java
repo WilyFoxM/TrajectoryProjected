@@ -1,5 +1,8 @@
 package ru.wilyfox.trajectory.sim;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Launch of an arrow from a bow by a player, as vanilla 26.2 computes it on the server.
  *
@@ -37,6 +40,33 @@ public final class BowShot {
     }
 
     return fromRotation(shooter, 0.0F, pow * 3.0F);
+  }
+
+  /**
+   * Relative likelihood of the server counting one tick more, and one tick less, than the client.
+   */
+  private static final double NEIGHBOUR_TICK_WEIGHT = 0.2;
+
+  /**
+   * The launch for the client's count, with the launches a server counting one tick more or less
+   * would fire. A neighbour with the same power, as at full draw, or with no shot at all is left
+   * out. The weights are a rough figure from one server, where about 4 in 10 partial draws differed
+   * by a tick; the split between more and less is taken as even.
+   */
+  public static List<SpreadZone.Variant> tickVariants(ShooterState shooter, int ticksHeld) {
+    List<SpreadZone.Variant> variants = new ArrayList<>();
+    Launch nominal = launch(shooter, ticksHeld);
+    if (nominal == null) {
+      return variants;
+    }
+    variants.add(new SpreadZone.Variant(nominal, 1.0 - 2.0 * NEIGHBOUR_TICK_WEIGHT));
+    for (int ticks : new int[] {ticksHeld - 1, ticksHeld + 1}) {
+      Launch neighbour = launch(shooter, ticks);
+      if (neighbour != null && neighbour.power() != nominal.power()) {
+        variants.add(new SpreadZone.Variant(neighbour, NEIGHBOUR_TICK_WEIGHT));
+      }
+    }
+    return variants;
   }
 
   /**

@@ -43,6 +43,9 @@ public final class ShotPreview {
   /** Twenty seconds of flight; a full-power arrow lands well within it. */
   private static final int MAX_TICKS = 400;
 
+  private static final DrawCounter DRAW = new DrawCounter();
+  private static InteractionHand drawHand = InteractionHand.MAIN_HAND;
+
   private static Prediction current;
   private static Prediction previous;
 
@@ -65,7 +68,8 @@ public final class ShotPreview {
   /** Runs at the end of every client tick. */
   public static void tick(Minecraft minecraft) {
     Prediction last = current;
-    current = compute(minecraft.player, minecraft.level);
+    int ticksHeld = followDraw(minecraft, minecraft.player);
+    current = compute(minecraft.player, minecraft.level, ticksHeld);
     previous =
         current == null
                 || last == null
@@ -78,7 +82,26 @@ public final class ShotPreview {
     }
   }
 
-  private static Prediction compute(LocalPlayer player, ClientLevel level) {
+  /** Follows the draw every tick, whether or not predictions are on, so a count is never stale. */
+  private static int followDraw(Minecraft minecraft, LocalPlayer player) {
+    if (player == null) {
+      DRAW.reset();
+      return 0;
+    }
+    boolean drawing =
+        player.isUsingItem()
+            && (player.getUseItem().is(Items.BOW) || player.getUseItem().is(Items.TRIDENT));
+    if (drawing) {
+      drawHand = player.getUsedItemHand();
+    }
+    return DRAW.update(
+        drawing,
+        drawing ? player.getTicksUsingItem() : 0,
+        minecraft.options.keyUse.isDown(),
+        player.getInventory().getSelectedSlot());
+  }
+
+  private static Prediction compute(LocalPlayer player, ClientLevel level, int ticksHeld) {
     if (!TrajectoryConfig.get().enabled
         || player == null
         || level == null
@@ -89,12 +112,22 @@ public final class ShotPreview {
     if (player.isUsingItem()) {
       ItemStack using = player.getUseItem();
       if (using.is(Items.BOW)) {
-        return bow(player, level, player.getUsedItemHand());
+        return bow(player, level, player.getUsedItemHand(), ticksHeld);
       }
       if (using.is(Items.TRIDENT)) {
-        return trident(player, level, player.getUsedItemHand(), using);
+        return trident(player, level, player.getUsedItemHand(), using, ticksHeld);
       }
       return null;
+    }
+    // Stopped by an outdated flag from the server, which is still counting: the same draw goes on.
+    if (DRAW.inGap()) {
+      ItemStack held = player.getItemInHand(drawHand);
+      if (held.is(Items.BOW)) {
+        return bow(player, level, drawHand, ticksHeld);
+      }
+      if (held.is(Items.TRIDENT)) {
+        return trident(player, level, drawHand, held, ticksHeld);
+      }
     }
     for (InteractionHand hand : InteractionHand.values()) {
       ItemStack stack = player.getItemInHand(hand);
@@ -152,7 +185,11 @@ public final class ShotPreview {
    * to break is not thrown: neither is shown.
    */
   private static Prediction trident(
-      LocalPlayer player, ClientLevel level, InteractionHand hand, ItemStack trident) {
+      LocalPlayer player,
+      ClientLevel level,
+      InteractionHand hand,
+      ItemStack trident,
+      int ticksHeld) {
     if (trident.nextDamageWillBreak()
         || EnchantmentHelper.getTridentSpinAttackStrength(trident, player) > 0.0F) {
       return null;
@@ -161,7 +198,6 @@ public final class ShotPreview {
     if (shooter == null) {
       return null;
     }
-    int ticksHeld = player.getTicksUsingItem();
     return single(
         player,
         level,
@@ -198,17 +234,23 @@ public final class ShotPreview {
     return new Prediction(Weapon.THROW, hand, List.of(shot), 0, level.getGameTime());
   }
 
-  private static Prediction bow(LocalPlayer player, ClientLevel level, InteractionHand hand) {
+  private static Prediction bow(
+      LocalPlayer player, ClientLevel level, InteractionHand hand, int ticksHeld) {
     ShooterState shooter = SentState.shooter(player);
     if (shooter == null) {
       return null;
     }
-    int ticksHeld = player.getTicksUsingItem();
     Launch launch = BowShot.launch(shooter, ticksHeld);
     if (launch == null) {
       return null;
     }
-    Shot shot = shot(player, level, Flight.arrow(MAX_TICKS), launch);
+    // Singleplayer counts the same ticks as the client, so only a remote server needs the variants.
+    List<SpreadZone.Variant> variants =
+        TrajectoryConfig.get().zoneTickCorrection
+                && !Minecraft.getInstance().hasSingleplayerServer()
+            ? BowShot.tickVariants(shooter, ticksHeld)
+            : List.of(new SpreadZone.Variant(launch, 1.0));
+    Shot shot = shot(player, level, Flight.arrow(MAX_TICKS), launch, variants);
     return new Prediction(Weapon.BOW, hand, List.of(shot), ticksHeld, level.getGameTime());
   }
 
@@ -254,6 +296,15 @@ public final class ShotPreview {
   }
 
   private static Shot shot(LocalPlayer player, ClientLevel level, Flight flight, Launch launch) {
+    return shot(player, level, flight, launch, List.of(new SpreadZone.Variant(launch, 1.0)));
+  }
+
+  private static Shot shot(
+      LocalPlayer player,
+      ClientLevel level,
+      Flight flight,
+      Launch launch,
+      List<SpreadZone.Variant> variants) {
     Trajectory path =
         flight.simulate(
             launch.spawn(), launch.nominalVelocity(), new ClientWorldView(level, player));
@@ -262,13 +313,13 @@ public final class ShotPreview {
             && level.getEntity(path.entity().id()) instanceof LivingEntity;
     SpreadZone.Zone zone = null;
     List<ZoneSurfaces.Patch> patches = List.of();
-    if (TrajectoryConfig.get().spreadZone
+    if (TrajectoryConfig.get().showsZone()
         && path.end() == Trajectory.End.BLOCK
         && path.impact() != null) {
       // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
       // by 0.05 per axis, which skews a direction taken from the last two points of a short final
       // step.
-      zone = SpreadZone.compute(launch, flight, path.impact(), path.arrival());
+      zone = SpreadZone.compute(variants, flight, path.impact(), path.arrival());
       if (zone != null) {
         patches = ZoneSurfaces.patches(level, zone);
       }

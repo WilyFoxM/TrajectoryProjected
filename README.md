@@ -52,7 +52,9 @@ Nothing is released yet; the first version is in preparation.
   crosshair turns into a cross.
 - **Spread zone**: a soft shade with a thin rim on the blocks around the hit. It
   wraps over steps and walls, leaves out what other blocks shield from the
-  projectile, and its inner ring marks where about half of the shots land.
+  projectile, and its inner ring marks where about half of the shots land. A ring for
+  90% of the shots and an allowance for draw timing on servers can be turned on, and
+  each part has its own switch.
 
 **Honest by design**
 
