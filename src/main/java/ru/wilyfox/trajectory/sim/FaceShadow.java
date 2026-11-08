@@ -148,6 +148,18 @@ public final class FaceShadow {
       max[k] = Math.min(max[k], c);
     }
 
+    // Most boxes shade nothing on this face: tell without building their shadow.
+    double slopeA = d[ia] / d[k];
+    double slopeB = d[ib] / d[k];
+    double near = c - min[k];
+    double far = c - max[k];
+    if (max[ia] + Math.max(slopeA * near, slopeA * far) <= face.minA() + EPSILON
+        || min[ia] + Math.min(slopeA * near, slopeA * far) >= face.maxA() - EPSILON
+        || max[ib] + Math.max(slopeB * near, slopeB * far) <= face.minB() + EPSILON
+        || min[ib] + Math.min(slopeB * near, slopeB * far) >= face.maxB() - EPSILON) {
+      return null;
+    }
+
     List<double[]> corners = inFrontOfStart(min, max, d, start);
     if (corners.isEmpty()) {
       return null;
