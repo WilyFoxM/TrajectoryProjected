@@ -59,6 +59,12 @@ public final class SpreadZone {
   private static final int WATER_SAMPLES = 32;
 
   /**
+   * Below this horizontal speed in water, in blocks per tick, a shot only sinks. It would still
+   * take a tick and a world query per step of the way down, for no change in where it crosses.
+   */
+  private static final double SINKING_SPEED = 0.01;
+
+  /**
    * Through water, a zone wider than this has no zone to show: some shots sink nearby and others
    * clear the water altogether, and a circle that size says nothing about where the arrow lands.
    */
@@ -344,6 +350,9 @@ public final class SpreadZone {
     boolean inWater = false;
     double side = dot(pos.subtract(point), normal);
     for (int tick = 0; tick < maxTicks; tick++) {
+      if (inWater && Math.hypot(vel.x(), vel.z()) < SINKING_SPEED) {
+        return sunkOnto(pos, side, normal);
+      }
       Flight.Step step = flight.step(vel, inWater);
       WorldView.BlockClip clip = world.clip(pos, pos.add(step.movement()));
       if (clip.type() == WorldView.BlockClip.Type.UNKNOWN) {
@@ -364,6 +373,14 @@ public final class SpreadZone {
       inWater = world.isInWater(flight.box(pos));
     }
     return null;
+  }
+
+  /** Where a shot sinking straight down from {@code pos} meets the plane, or {@code pos}. */
+  private static Vec3d sunkOnto(Vec3d pos, double side, Vec3d normal) {
+    if (side >= 0.0 || normal.y() >= -1.0e-3) {
+      return pos;
+    }
+    return pos.add(0.0, -side / normal.y(), 0.0);
   }
 
   /** Two unit vectors perpendicular to {@code d} and to each other. */

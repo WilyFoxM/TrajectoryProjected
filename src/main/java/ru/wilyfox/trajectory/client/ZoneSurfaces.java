@@ -52,8 +52,87 @@ final class ZoneSurfaces {
   /** More while moving: an edge between two waypoints lies further out than either ellipse. */
   private static final double REACH_MOVING = 1.2;
 
+  /** Slack for the tube of a moving zone, whose ellipse also turns a little on the way. */
+  private static final double MOVING_SLACK = 1.25;
+
   /** The zone is skipped when its reach would cover more blocks than this. */
   private static final int MAX_BLOCKS = 12000;
+
+  /**
+   * The space that matters to a zone: its ellipse, drawn out along the arrival direction, from
+   * where the shot starts onward. A box outside it neither catches the zone nor shades it, and
+   * telling so costs a few multiplications, far less than looking the block up.
+   */
+  private record Tube(
+      Vec3d center,
+      Vec3d perU,
+      Vec3d perV,
+      double reachU,
+      double reachV,
+      Vec3d direction,
+      double startAlong) {
+
+    static Tube of(SpreadZone.Zone zone, SpreadZone.Zone from, double reach, Vec3d start) {
+      Vec3d perU = zone.axisU().scale(1.0 / zone.axisU().lengthSqr());
+      Vec3d perV = zone.axisV().scale(1.0 / zone.axisV().lengthSqr());
+      double reachU = reach;
+      double reachV = reach;
+      if (from != null) {
+        // Everywhere on the way: as far again as the zone moves, and as wide as it was.
+        Vec3d moved = from.center().subtract(zone.center());
+        double wide = MOVING_SLACK * Math.max(1.0, widest(from) / widest(zone));
+        reachU = reach * wide + Math.abs(dot(moved, perU));
+        reachV = reach * wide + Math.abs(dot(moved, perV));
+      }
+      Vec3d direction = zone.direction();
+      return new Tube(zone.center(), perU, perV, reachU, reachV, direction, dot(start, direction));
+    }
+
+    private static double widest(SpreadZone.Zone zone) {
+      return Math.max(zone.axisU().length(), zone.axisV().length());
+    }
+
+    boolean reaches(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+      return within(perU, reachU, minX, minY, minZ, maxX, maxY, maxZ)
+          && within(perV, reachV, minX, minY, minZ, maxX, maxY, maxZ)
+          && largest(direction, minX, minY, minZ, maxX, maxY, maxZ) >= startAlong;
+    }
+
+    private boolean within(
+        Vec3d axis,
+        double reach,
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ) {
+      double at = dot(center, axis);
+      return largest(axis, minX, minY, minZ, maxX, maxY, maxZ) - at >= -reach
+          && -largest(
+                      new Vec3d(-axis.x(), -axis.y(), -axis.z()),
+                      minX,
+                      minY,
+                      minZ,
+                      maxX,
+                      maxY,
+                      maxZ)
+                  - at
+              <= reach;
+    }
+
+    /** The most a box reaches along a vector. */
+    private static double largest(
+        Vec3d v, double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+      return v.x() * (v.x() > 0 ? maxX : minX)
+          + v.y() * (v.y() > 0 ? maxY : minY)
+          + v.z() * (v.z() > 0 ? maxZ : minZ);
+    }
+
+    private static double dot(Vec3d a, Vec3d b) {
+      return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
+    }
+  }
 
   /** A lit convex piece of a face, its corners in order, camera-independent. */
   record Patch(List<Vec3d> corners) {}
@@ -100,6 +179,7 @@ final class ZoneSurfaces {
             Mth.floor(faceMax[1]) + 2,
             Mth.floor(faceMax[2]) + 2);
 
+    Tube tube = Tube.of(zone, from, reach, shadowsFrom);
     List<Aabb> casters = new ArrayList<>();
     List<AABB> surfaces = new ArrayList<>();
     List<BlockPos> surfacePositions = new ArrayList<>();
@@ -107,6 +187,10 @@ final class ZoneSurfaces {
     for (int x = lo[0]; x <= hi[0]; x++) {
       for (int y = lo[1]; y <= hi[1]; y++) {
         for (int z = lo[2]; z <= hi[2]; z++) {
+          // Fences and walls stand taller than their block.
+          if (!tube.reaches(x, y, z, x + 1.0, y + 1.5, z + 1.0)) {
+            continue;
+          }
           pos.set(x, y, z);
           BlockState state = level.getBlockState(pos);
           if (state.isAir()) {
@@ -126,6 +210,10 @@ final class ZoneSurfaces {
           BlockPos at = pos.immutable();
           for (AABB box : shape.toAabbs()) {
             AABB world = box.move(at);
+            if (!tube.reaches(
+                world.minX, world.minY, world.minZ, world.maxX, world.maxY, world.maxZ)) {
+              continue;
+            }
             casters.add(
                 new Aabb(world.minX, world.minY, world.minZ, world.maxX, world.maxY, world.maxZ));
             if (surface) {
@@ -233,7 +321,7 @@ final class ZoneSurfaces {
         continue;
       }
       FaceShadow.AxisFace face = face(box, side);
-      if (way.stream().noneMatch(zone -> touches(zone, face, reach, depth))) {
+      if (!touchesAny(way, face, reach, depth)) {
         continue;
       }
       if (coveredByNeighbour(level, pos, box, side)) {
@@ -259,6 +347,16 @@ final class ZoneSurfaces {
       case NORTH -> new FaceShadow.AxisFace(2, -1, b.minZ, b.minX, b.maxX, b.minY, b.maxY);
       case SOUTH -> new FaceShadow.AxisFace(2, 1, b.maxZ, b.minX, b.maxX, b.minY, b.maxY);
     };
+  }
+
+  private static boolean touchesAny(
+      List<SpreadZone.Zone> way, FaceShadow.AxisFace face, double reach, double depth) {
+    for (SpreadZone.Zone zone : way) {
+      if (touches(zone, face, reach, depth)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether the face can reach the unit ellipse and lies within the zone's depth. */

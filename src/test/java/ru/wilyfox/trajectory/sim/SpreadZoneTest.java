@@ -192,6 +192,23 @@ class SpreadZoneTest {
   }
 
   @Test
+  void aSinkingShotIsFollowedDownToThePlane() {
+    TestWorld world = TestWorld.floorAt(0.0);
+    world.water.add(new Aabb(-100, 0, -100, 100, 60, 100));
+    Vec3d crossing =
+        SpreadZone.crossingInWorld(
+            new Vec3d(3.0, 50.0, 4.0),
+            new Vec3d(0.0, -0.1, 0.0),
+            ARROW,
+            new Vec3d(0.0, 10.0, 0.0),
+            new Vec3d(0.0, -1.0, 0.0),
+            world);
+    assertEquals(3.0, crossing.x(), 1.0e-9);
+    assertEquals(10.0, crossing.y(), 1.0e-9);
+    assertEquals(4.0, crossing.z(), 1.0e-9);
+  }
+
+  @Test
   void aShotInTheWorldStopsAtABlockBeforeThePlane() {
     TestWorld world = TestWorld.empty();
     world.solids.add(new Aabb(-5, 60, 10, 5, 70, 11));
