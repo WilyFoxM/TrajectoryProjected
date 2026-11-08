@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Trajectory Projected" width="100%">
-</p>
-
-<p align="center">
   <a href="https://github.com/WilyFoxM/TrajectoryProjected/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/WilyFoxM/TrajectoryProjected/build.yml?branch=main&label=build&labelColor=2a2b2a" alt="Build"></a>
   <img src="https://img.shields.io/badge/Minecraft-26.2-ef6351?labelColor=2a2b2a" alt="Minecraft 26.2">
   <img src="https://img.shields.io/badge/loader-Fabric-ef6351?labelColor=2a2b2a" alt="Fabric">
