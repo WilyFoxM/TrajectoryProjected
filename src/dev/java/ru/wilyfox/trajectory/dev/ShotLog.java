@@ -1,4 +1,4 @@
-package ru.wilyfox.trajectory.client;
+package ru.wilyfox.trajectory.dev;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,26 +18,25 @@ import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.wilyfox.trajectory.mixin.AbstractArrowAccessor;
+import ru.wilyfox.trajectory.client.ClientWorldView;
+import ru.wilyfox.trajectory.client.ShotPreview;
+import ru.wilyfox.trajectory.dev.mixin.AbstractArrowAccessor;
 import ru.wilyfox.trajectory.sim.ArrowFlight;
 import ru.wilyfox.trajectory.sim.Launch;
 import ru.wilyfox.trajectory.sim.Trajectory;
 import ru.wilyfox.trajectory.sim.Vec3d;
 
 /**
- * Development log comparing predictions with real arrows, enabled with {@code
- * -Dtrajectory.devlog=true}. For each own arrow it records the predicted launch, the launch the
- * server sent (velocity quantized by the packet), the spread offset that implies, and where the
- * arrow came to rest compared with two predictions: the nominal one shown to the player, and one
- * re-simulated from the server's launch, which isolates the flight model from the random spread.
- * The rest position is the one the server reports after the arrow stops; where the client's own
- * copy stopped is kept in a separate column.
+ * Development log comparing predictions with real arrows, for field measurements. For each own
+ * arrow it records the predicted launch, the launch the server sent (velocity quantized by the
+ * packet), the spread offset that implies, and where the arrow came to rest compared with two
+ * predictions: the nominal one shown to the player, and one re-simulated from the server's launch,
+ * which isolates the flight model from the random spread. The rest position is the one the server
+ * reports after the arrow stops; where the client's own copy stopped is kept in a separate column.
  *
  * <p>Rows go to {@code trajectory-reports/shots-<time>.csv} in the game directory.
  */
 final class ShotLog {
-  static final boolean ENABLED = Boolean.getBoolean("trajectory.devlog");
-
   private static final Logger LOG = LoggerFactory.getLogger("Trajectory Projected");
 
   /** An arrow should appear within a round trip; two seconds is generous. */
@@ -59,13 +58,11 @@ final class ShotLog {
   private ShotLog() {}
 
   static void released(ShotPreview.Prediction prediction) {
-    if (ENABLED) {
-      pending = prediction;
-    }
+    pending = prediction;
   }
 
   static void entityLoaded(Entity entity) {
-    if (!ENABLED || pending == null || entity.getType() != EntityTypes.ARROW) {
+    if (pending == null || entity.getType() != EntityTypes.ARROW) {
       return;
     }
     Minecraft minecraft = Minecraft.getInstance();
@@ -86,7 +83,7 @@ final class ShotLog {
   }
 
   static void tick() {
-    if (!ENABLED || tracked.isEmpty()) {
+    if (tracked.isEmpty()) {
       return;
     }
     for (Iterator<Tracked> it = tracked.iterator(); it.hasNext(); ) {

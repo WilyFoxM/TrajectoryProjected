@@ -65,16 +65,47 @@ jar {
     }
 }
 
+// Development tools live in a separate add-on mod, outside the release jar.
+sourceSets {
+    dev {
+        compileClasspath += main.output + main.compileClasspath
+        runtimeClasspath += main.output + main.runtimeClasspath
+    }
+}
+
+processDevResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.register('devJar', Jar) {
+    archiveBaseName = "${project.archives_base_name}-dev"
+    from sourceSets.dev.output
+    from("LICENSE") {
+        rename { "${it}_${archiveBaseName.get()}" }
+    }
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('devJar')
+}
+
 loom {
     mods {
         trajectory_projected {
             sourceSet sourceSets.main
         }
+        trajectory_projected_dev {
+            sourceSet sourceSets.dev
+        }
     }
     runs {
         client {
             // Development runs record predicted against real arrows (trajectory-reports/).
-            vmArg "-Dtrajectory.devlog=true"
+            source sourceSets.dev
         }
     }
 }
@@ -88,8 +119,12 @@ fabricApi.configureTests {
     eula = true
 }
 
-tasks.named('runClientGameTest') {
-    jvmArgs '-Dtrajectory.devlog=true'
+// The local fixtures run with the development add-on, so they can log shots.
+sourceSets {
+    gametest {
+        compileClasspath += dev.output
+        runtimeClasspath += dev.output
+    }
 }
 
 apply from: 'gradle/quality.gradle'

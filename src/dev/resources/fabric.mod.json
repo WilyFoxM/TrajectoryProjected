@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "trajectory_projected_dev",
+  "version": "${version}",
+  "name": "Trajectory Projected Dev",
+  "description": "Logs predicted against real shots for field measurements. Not needed to play.",
+  "authors": [
+    "WilyFox"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "ru.wilyfox.trajectory.dev.TrajectoryProjectedDev"
+    ]
+  },
+  "mixins": [
+    "trajectory_projected_dev.mixins.json"
+  ],
+  "depends": {
+    "trajectory_projected": "${version}"
+  }
+}

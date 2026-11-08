@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "ru.wilyfox.trajectory.dev.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractArrowAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
