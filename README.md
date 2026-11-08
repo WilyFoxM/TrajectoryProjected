@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/banner.png" alt="Trajectory Projected" width="100%">
+</p>
+
+<p align="center">
   <a href="https://github.com/WilyFoxM/TrajectoryProjected/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/WilyFoxM/TrajectoryProjected/build.yml?branch=main&label=build&labelColor=2a2b2a" alt="Build"></a>
   <img src="https://img.shields.io/badge/Minecraft-26.2-ef6351?labelColor=2a2b2a" alt="Minecraft 26.2">
   <img src="https://img.shields.io/badge/loader-Fabric-ef6351?labelColor=2a2b2a" alt="Fabric">
@@ -90,20 +94,74 @@ shaders and stay sharp; they are not lit or fogged by the pack. Checked with
 Complementary Reimagined r5.8.1 and BSL v10.1.8. Without a pack, Iris changes
 nothing.
 
-Other rendering mods have not been tested, nor have multiplayer servers, where
-latency and plugins can change what the server fires.
+Other rendering mods have not been tested.
+
+On multiplayer I have tested one small server of my own; the results are under
+[Accuracy](#accuracy). Plugins and custom rules can change what a server fires. Some
+servers don't allow mods like this one, so check the rules of the server you play on.
 
 ## Accuracy
 
 The simulation follows vanilla's own code: the launch, the order of operations in
 each tick, water, entity hitboxes and the random spread. Unit tests compare it with
-vanilla's formulas, and in singleplayer the launch matches the projectile the server
-creates, with every test shot landing inside its spread zone.
+vanilla's formulas, which says nothing about the game itself, so I also measured it
+in game.
 
-Accuracy has not been measured in a field test yet, and multiplayer is untested.
-Results will be published here with the data once they exist.
+I fired 334 logged bow shots and compared each prediction with the launch the server
+sent and with where the arrow stopped. The first 30 partial draws on the server
+exposed a bug in how the mod counted the draw. It is fixed, and the table shows the
+series fired after the fix instead.
+
+| Conditions | Shots | Launch within vanilla's spread limit | Largest flight error, blocks |
+|---|---|---|---|
+| Singleplayer, standing, 25–59 blocks | 92 | 92 | 0.049 |
+| Singleplayer, moving, jumping, partial draw, 12–73 blocks | 92 | 92 | 0.009 |
+| Server, full draw, standing and strafing | 60 | 60 | 0.009 |
+| Server, partial draw, 9–15 blocks | 60 | 38 | 0.002 |
+
+Flight error is how far the arrow stopped from a simulation started from the launch
+the server actually sent, so it leaves out the random spread. Apart from one shot at
+0.049 blocks, which I can't explain, it stayed under 0.01.
+
+The random spread is what you see in practice. Standing in singleplayer, arrows
+stopped a median of 0.6 blocks from the predicted point at 25 blocks, 1.6 at 43 and
+1.3 at 59, and never more than 4.6. Zero misses in 184 singleplayer launches puts the
+real rate below about 1.6% (95% confidence).
+
+### Spread on servers
+
+At full draw a server behaved like singleplayer. A partial draw is different: the
+client and the server count the draw separately, and in 22 of those 60 shots the
+server counted one tick more or less than the client. Those 22 are all the launches
+outside the limit in the table. The client can't know when this happens. The likely
+cause is that client and server ticks aren't in step, but I haven't confirmed that.
+
+A tick matters because a partial draw gains power with every tick. At 9–15 blocks, a
+shot a tick off stopped about 1.1–1.4 blocks from the prediction, up to 2.1, while
+shots with a matching count stopped a median of 0.14–0.24 blocks away. At full draw
+the power no longer changes, so a tick makes no difference.
+
+**Allow for draw timing**, on the Target page and off by default, widens the spread
+zone to cover a tick more or less as well. The zone gets larger and busier, so use it
+if you shoot partial draws on servers. It only applies to the bow, and has no effect
+in singleplayer or at full draw. Its weights (60% same tick, 20% each side) are a rough
+figure from that one server, and I haven't checked the widened zone against real
+shots yet.
+
+### Limits
+
+- The server results come from one server and one evening: about 166 ms ping and no
+  other players. Other latency, server load or plugins may give different numbers.
+- Only the bow has been measured this way. Other projectiles had short singleplayer
+  checks: 10 crossbow arrows, 4 ender pearls and 3 tridents all landed inside their
+  zones.
+- The zone's rings are computed from simulated spread. I haven't counted real arrows
+  against them.
+- A client loses track of an arrow at about 64 blocks, so past that distance the log
+  has only the arrow's last known position.
 
 ## License
 
-The code is under the [MIT](LICENSE) license. The mod icon is a simplified recolor of
-Minecraft textures, which belong to Mojang, and is not covered by that license.
+The code is under the [MIT](LICENSE) license. The mod icon and the banner are
+simplified recolors of Minecraft textures, which belong to Mojang, and are not covered
+by that license.
