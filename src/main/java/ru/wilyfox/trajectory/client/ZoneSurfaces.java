@@ -18,7 +18,8 @@ import ru.wilyfox.trajectory.sim.Vec3d;
 /**
  * The block surfaces a spread zone falls on, like the shadow of a round object cast along the
  * arrow's arrival direction: faces turned towards the arrow, inside the zone's reach, minus the
- * shadows other blocks cast on them along that direction. Gathered once per tick.
+ * shadows other blocks cast on them along that direction. Gathered once per tick, for every place
+ * the frames until the next tick draw the zone: from where it was, to where it is now.
  *
  * <p>Collision shapes are used, as for the arrow itself: grass and flowers neither catch the zone
  * nor shade it.
@@ -45,6 +46,12 @@ final class ZoneSurfaces {
   /** Patches are lifted off the block by this much to stay in front of it. */
   private static final double LIFT = 0.002;
 
+  /** How far past its edge an ellipse counts as reaching a face, as a share of the radius. */
+  private static final double REACH_STILL = 1.05;
+
+  /** More while moving: an edge between two waypoints lies further out than either ellipse. */
+  private static final double REACH_MOVING = 1.2;
+
   /** The zone is skipped when its reach would cover more blocks than this. */
   private static final int MAX_BLOCKS = 12000;
 
@@ -53,9 +60,18 @@ final class ZoneSurfaces {
 
   private ZoneSurfaces() {}
 
-  static List<Patch> patches(ClientLevel level, SpreadZone.Zone zone) {
+  /**
+   * The surfaces of {@code zone}, and of the way to it from {@code from} if frames blend from there
+   * ({@code null} if not).
+   */
+  static List<Patch> patches(ClientLevel level, SpreadZone.Zone zone, SpreadZone.Zone from) {
+    List<SpreadZone.Zone> way = from == null ? List.of(zone) : from.waypoints(zone);
+    double reach = from == null ? REACH_STILL : REACH_MOVING;
     Vec3d dir = zone.direction();
-    double depth = depth(zone);
+    double depth = 0.0;
+    for (SpreadZone.Zone at : way) {
+      depth = Math.max(depth, depth(at));
+    }
     double[] faceMin = new double[3];
     double[] faceMax = new double[3];
     int[] lo = new int[3];
@@ -63,7 +79,7 @@ final class ZoneSurfaces {
     // A wide zone at a shallow angle can reach over too many blocks: search less deep rather
     // than drop the zone.
     while (true) {
-      bounds(zone, depth, faceMin, faceMax, lo, hi);
+      bounds(way, depth, faceMin, faceMax, lo, hi);
       long blocks = (long) (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1);
       if (blocks <= MAX_BLOCKS) {
         break;
@@ -121,30 +137,46 @@ final class ZoneSurfaces {
 
     List<Patch> patches = new ArrayList<>();
     for (int i = 0; i < surfaces.size(); i++) {
-      addPatches(level, zone, depth, surfacePositions.get(i), surfaces.get(i), casters, patches);
+      addPatches(
+          level,
+          way,
+          dir,
+          reach,
+          depth,
+          surfacePositions.get(i),
+          surfaces.get(i),
+          casters,
+          patches);
     }
     return patches;
   }
 
   /** The face search region and the shadow caster region, in blocks, for a search depth. */
   private static void bounds(
-      SpreadZone.Zone zone, double depth, double[] faceMin, double[] faceMax, int[] lo, int[] hi) {
-    Vec3d dir = zone.direction();
+      List<SpreadZone.Zone> way,
+      double depth,
+      double[] faceMin,
+      double[] faceMax,
+      int[] lo,
+      int[] hi) {
     double[] castMin = new double[3];
     double[] castMax = new double[3];
     for (int i = 0; i < 3; i++) {
       faceMin[i] = castMin[i] = Double.MAX_VALUE;
       faceMax[i] = castMax[i] = -Double.MAX_VALUE;
     }
-    for (int su = -1; su <= 1; su += 2) {
-      for (int sv = -1; sv <= 1; sv += 2) {
-        Vec3d edge = zone.center().add(zone.axisU().scale(su)).add(zone.axisV().scale(sv));
-        for (int sd = -1; sd <= 1; sd += 2) {
-          Vec3d p = edge.add(dir.scale(sd * depth));
-          include(faceMin, faceMax, p);
-          include(castMin, castMax, p);
+    for (SpreadZone.Zone zone : way) {
+      Vec3d dir = zone.direction();
+      for (int su = -1; su <= 1; su += 2) {
+        for (int sv = -1; sv <= 1; sv += 2) {
+          Vec3d edge = zone.center().add(zone.axisU().scale(su)).add(zone.axisV().scale(sv));
+          for (int sd = -1; sd <= 1; sd += 2) {
+            Vec3d p = edge.add(dir.scale(sd * depth));
+            include(faceMin, faceMax, p);
+            include(castMin, castMax, p);
+          }
+          include(castMin, castMax, edge.add(dir.scale(-SHADOW_REACH)));
         }
-        include(castMin, castMax, edge.add(dir.scale(-SHADOW_REACH)));
       }
     }
     for (int i = 0; i < 3; i++) {
@@ -180,13 +212,14 @@ final class ZoneSurfaces {
 
   private static void addPatches(
       ClientLevel level,
-      SpreadZone.Zone zone,
+      List<SpreadZone.Zone> way,
+      Vec3d dir,
+      double reach,
       double depth,
       BlockPos pos,
       AABB box,
       List<Aabb> casters,
       List<Patch> out) {
-    Vec3d dir = zone.direction();
     for (Direction side : Direction.values()) {
       double nx = side.getStepX();
       double ny = side.getStepY();
@@ -196,7 +229,7 @@ final class ZoneSurfaces {
         continue;
       }
       FaceShadow.AxisFace face = face(box, side);
-      if (!touches(zone, face, depth)) {
+      if (way.stream().noneMatch(zone -> touches(zone, face, reach, depth))) {
         continue;
       }
       if (coveredByNeighbour(level, pos, box, side)) {
@@ -225,7 +258,8 @@ final class ZoneSurfaces {
   }
 
   /** Whether the face can reach the unit ellipse and lies within the zone's depth. */
-  private static boolean touches(SpreadZone.Zone zone, FaceShadow.AxisFace face, double depth) {
+  private static boolean touches(
+      SpreadZone.Zone zone, FaceShadow.AxisFace face, double reach, double depth) {
     double minU = Double.MAX_VALUE;
     double maxU = -Double.MAX_VALUE;
     double minV = Double.MAX_VALUE;
@@ -247,10 +281,10 @@ final class ZoneSurfaces {
         maxD = Math.max(maxD, d);
       }
     }
-    return maxU >= -1.05
-        && minU <= 1.05
-        && maxV >= -1.05
-        && minV <= 1.05
+    return maxU >= -reach
+        && minU <= reach
+        && maxV >= -reach
+        && minV <= reach
         && maxD >= -depth
         && minD <= depth;
   }

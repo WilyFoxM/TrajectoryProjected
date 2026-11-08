@@ -373,8 +373,8 @@ final class DotRenderer {
             occluded);
     if (config.showsZone() && current.zone() != null && !current.zonePatches().isEmpty()) {
       SpreadZone.Zone zone =
-          previous != null && previous.zone() != null
-              ? SpreadZone.Zone.blend(previous.zone(), current.zone(), partial)
+          current.zoneFrom() != null
+              ? SpreadZone.Zone.blend(current.zoneFrom(), current.zone(), partial)
               : current.zone();
       submitZone(context, zone, current.zonePatches(), camera.pos);
     }

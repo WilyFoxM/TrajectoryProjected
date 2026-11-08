@@ -1,9 +1,11 @@
 package ru.wilyfox.trajectory.sim;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.SplittableRandom;
 import org.junit.jupiter.api.Test;
 
@@ -121,6 +123,51 @@ class SpreadZoneTest {
   }
 
   /** The rings hold their shares of shots they were not fitted on. */
+  private static SpreadZone.Zone zoneAt(Vec3d center, Vec3d u, Vec3d v) {
+    return new SpreadZone.Zone(center, u, v, new Vec3d(0, 0, 1), 0.5, 0.9);
+  }
+
+  @Test
+  void aZoneGlidesOverSmallMovesAndJumpsOverLargeOnes() {
+    Vec3d u = new Vec3d(0.5, 0, 0);
+    Vec3d v = new Vec3d(0, 0.4, 0);
+    SpreadZone.Zone zone = zoneAt(Vec3d.ZERO, u, v);
+    assertTrue(zone.glidesTo(zoneAt(new Vec3d(0.9, 0, 0), u, v)));
+    assertFalse(zone.glidesTo(zoneAt(new Vec3d(1.1, 0, 0), u, v)));
+    // Reach grows with the radius: far zones move further per tick.
+    Vec3d wideU = new Vec3d(2.0, 0, 0);
+    Vec3d wideV = new Vec3d(0, 1.8, 0);
+    SpreadZone.Zone wide = zoneAt(Vec3d.ZERO, wideU, wideV);
+    assertTrue(wide.glidesTo(zoneAt(new Vec3d(3.9, 0, 0), wideU, wideV)));
+    assertFalse(wide.glidesTo(zoneAt(new Vec3d(4.1, 0, 0), wideU, wideV)));
+  }
+
+  @Test
+  void aZoneDoesNotGlideWhenItsAxesSwap() {
+    // Blending axes a quarter turn apart would squash the ellipse halfway.
+    Vec3d u = new Vec3d(0.5, 0, 0);
+    Vec3d v = new Vec3d(0, 0.49, 0);
+    SpreadZone.Zone zone = zoneAt(Vec3d.ZERO, u, v);
+    assertFalse(zone.glidesTo(zoneAt(Vec3d.ZERO, new Vec3d(0, 0.5, 0), new Vec3d(-0.49, 0, 0))));
+    assertTrue(zone.glidesTo(zoneAt(Vec3d.ZERO, u.scale(-1), v)));
+  }
+
+  @Test
+  void waypointsOverlapAndEndAtBothZones() {
+    Vec3d u = new Vec3d(0.4, 0, 0);
+    Vec3d v = new Vec3d(0, 0.3, 0);
+    Vec3d end = new Vec3d(0.8, 0, 0);
+    List<SpreadZone.Zone> way = zoneAt(Vec3d.ZERO, u, v).waypoints(zoneAt(end, u, v));
+    assertEquals(0.0, way.getFirst().center().x(), 1.0e-9);
+    assertEquals(end.x(), way.getLast().center().x(), 1.0e-9);
+    for (int i = 0; i + 1 < way.size(); i++) {
+      double gap = way.get(i + 1).center().x() - way.get(i).center().x();
+      assertTrue(gap > 0.0 && gap <= 0.15 + 1.0e-9, "gap " + gap);
+    }
+    // Not moving at all needs only the zone itself.
+    assertEquals(2, zoneAt(end, u, v).waypoints(zoneAt(end, u, v)).size());
+  }
+
   @Test
   void ringsHoldHalfAndNinetyPercent() {
     for (float pitch : new float[] {5.0F, -10.0F, -30.0F}) {

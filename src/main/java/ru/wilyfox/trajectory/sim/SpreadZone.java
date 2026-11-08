@@ -37,6 +37,21 @@ public final class SpreadZone {
   /** Axes never shrink below this, so a zone seen exactly edge-on stays drawable. */
   private static final double MIN_RADIUS = 0.05;
 
+  /**
+   * A zone glides to its next position between ticks only over this far, in blocks, or {@link
+   * #GLIDE_PER_RADIUS} of its radius if that is more. Beyond it the hit has jumped, as off a block
+   * edge, and a zone sliding through the air between would fall on nothing.
+   */
+  private static final double MIN_GLIDE = 1.0;
+
+  private static final double GLIDE_PER_RADIUS = 2.0;
+
+  /** Below this cosine between axes, blending would squash the ellipse on the way. */
+  private static final double MIN_GLIDE_AXIS_COS = 0.7;
+
+  /** At most this many positions are looked at along a glide. */
+  private static final int MAX_WAYPOINTS = 16;
+
   private static final List<Vec3d> OFFSETS = offsets();
 
   private SpreadZone() {}
@@ -65,6 +80,35 @@ public final class SpreadZone {
       return new double[] {
         dot(rel, axisU) / axisU.lengthSqr(), dot(rel, axisV) / axisV.lengthSqr()
       };
+    }
+
+    /** Whether frames between two ticks may blend from this zone to {@code next}. */
+    public boolean glidesTo(Zone next) {
+      double radius = Math.max(next.axisU.length(), next.axisV.length());
+      double reach = Math.max(MIN_GLIDE, GLIDE_PER_RADIUS * radius);
+      Vec3d moved = next.center.subtract(center);
+      return moved.lengthSqr() <= reach * reach
+          && Math.abs(cosine(axisU, next.axisU)) >= MIN_GLIDE_AXIS_COS
+          && Math.abs(cosine(axisV, next.axisV)) >= MIN_GLIDE_AXIS_COS;
+    }
+
+    /**
+     * Positions along the blend from this zone to {@code next}, close enough that the ellipses
+     * overlap: everything the frames between two ticks can cover.
+     */
+    public List<Zone> waypoints(Zone next) {
+      double step =
+          0.5
+              * Math.min(
+                  Math.min(axisU.length(), axisV.length()),
+                  Math.min(next.axisU.length(), next.axisV.length()));
+      double moved = Math.sqrt(next.center.subtract(center).lengthSqr());
+      int count = (int) Math.clamp(Math.ceil(moved / step), 1L, (long) MAX_WAYPOINTS);
+      List<Zone> out = new ArrayList<>(count + 1);
+      for (int i = 0; i <= count; i++) {
+        out.add(blend(this, next, (double) i / count));
+      }
+      return out;
     }
 
     /** Blend of two zones; used to move smoothly between ticks. */
@@ -260,6 +304,10 @@ public final class SpreadZone {
 
   static double dot(Vec3d a, Vec3d b) {
     return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
+  }
+
+  private static double cosine(Vec3d a, Vec3d b) {
+    return dot(a, b) / Math.max(Math.sqrt(a.lengthSqr() * b.lengthSqr()), 1.0e-12);
   }
 
   private static Vec3d cross(Vec3d a, Vec3d b) {

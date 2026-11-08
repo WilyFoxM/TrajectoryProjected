@@ -76,17 +76,52 @@ public final class ShotPreview {
   public static void tick(Minecraft minecraft) {
     Prediction last = current;
     int ticksHeld = followDraw(minecraft, minecraft.player);
-    current = compute(minecraft.player, minecraft.level, ticksHeld);
-    previous =
-        current == null
-                || last == null
-                || last.weapon() != current.weapon()
-                || last.shots().size() != current.shots().size()
-            ? null
-            : last;
+    current = withSurfaces(compute(minecraft.player, minecraft.level, ticksHeld), last, minecraft);
+    previous = continues(last, current) ? last : null;
     if (bowRelease != null && last != null && last.weapon() == Weapon.BOW && current == null) {
       bowRelease.accept(last);
     }
+  }
+
+  /** Whether a prediction goes on from the last one, so frames can blend between the two. */
+  private static boolean continues(Prediction last, Prediction next) {
+    return last != null
+        && next != null
+        && last.weapon() == next.weapon()
+        && last.shots().size() == next.shots().size();
+  }
+
+  /**
+   * Finds the surfaces each zone falls on. A zone that glides from where it was last tick needs the
+   * surfaces along the way too, or frames before the next tick would draw it on nothing.
+   */
+  private static Prediction withSurfaces(Prediction next, Prediction last, Minecraft minecraft) {
+    if (next == null) {
+      return null;
+    }
+    boolean continues = continues(last, next);
+    List<Shot> shots = new ArrayList<>(next.shots().size());
+    for (int i = 0; i < next.shots().size(); i++) {
+      Shot shot = next.shots().get(i);
+      SpreadZone.Zone zone = shot.zone();
+      if (zone == null) {
+        shots.add(shot);
+        continue;
+      }
+      SpreadZone.Zone before = continues ? last.shots().get(i).zone() : null;
+      SpreadZone.Zone from = before != null && before.glidesTo(zone) ? before : null;
+      shots.add(
+          new Shot(
+              shot.flight(),
+              shot.launch(),
+              shot.path(),
+              shot.livingTarget(),
+              zone,
+              from,
+              ZoneSurfaces.patches(minecraft.level, zone, from)));
+    }
+    return new Prediction(
+        next.weapon(), next.hand(), List.copyOf(shots), next.ticksHeld(), next.gameTime());
   }
 
   /** Follows the draw every tick, whether or not predictions are on, so a count is never stale. */
@@ -319,7 +354,6 @@ public final class ShotPreview {
         path.end() == Trajectory.End.ENTITY
             && level.getEntity(path.entity().id()) instanceof LivingEntity;
     SpreadZone.Zone zone = null;
-    List<ZoneSurfaces.Patch> patches = List.of();
     if (TrajectoryConfig.get().showsZone()
         && path.end() == Trajectory.End.BLOCK
         && path.impact() != null) {
@@ -327,11 +361,8 @@ public final class ShotPreview {
       // by 0.05 per axis, which skews a direction taken from the last two points of a short final
       // step.
       zone = SpreadZone.compute(variants, flight, path.impact(), path.arrival());
-      if (zone != null) {
-        patches = ZoneSurfaces.patches(level, zone);
-      }
     }
-    return new Shot(flight, launch, path, living, zone, patches);
+    return new Shot(flight, launch, path, living, zone, null, List.of());
   }
 
   /** {@code 1 + Fireworks.flightDuration()}, as {@code FireworkRocketEntity} reads it. */
@@ -376,7 +407,9 @@ public final class ShotPreview {
   /**
    * One predicted projectile: how it flies, its launch, the flight without spread, whether it ends
    * in a living entity (mobs, players, armor stands), and the spread zone with the lit block
-   * surfaces it falls on ({@code null} and empty unless the path ends in a block).
+   * surfaces it falls on ({@code null} and empty unless the path ends in a block). {@code zoneFrom}
+   * is the zone frames blend from until the next tick, which the surfaces also cover; {@code null}
+   * if the zone is drawn where it is, because it just appeared or jumped.
    */
   public record Shot(
       Flight flight,
@@ -384,6 +417,7 @@ public final class ShotPreview {
       Trajectory path,
       boolean livingTarget,
       SpreadZone.Zone zone,
+      SpreadZone.Zone zoneFrom,
       List<ZoneSurfaces.Patch> zonePatches) {}
 
   /**
