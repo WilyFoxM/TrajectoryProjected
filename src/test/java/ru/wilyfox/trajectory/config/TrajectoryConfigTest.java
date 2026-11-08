@@ -57,4 +57,19 @@ class TrajectoryConfigTest {
     assertFalse(TrajectoryConfig.get().showHidden);
     TrajectoryConfig.defaults();
   }
+
+  @Test
+  void zoneOptionsKeepTheDefaultLook() {
+    TrajectoryConfig config = new TrajectoryConfig();
+    assertTrue(config.spreadZone && config.zoneFull && config.zoneHalfRing);
+    assertTrue(!config.zoneWideRing && !config.zoneTickCorrection);
+    assertTrue(config.showsZone());
+    config.zoneFull = false;
+    config.zoneHalfRing = false;
+    assertTrue(!config.showsZone());
+    config.zoneWideRing = true;
+    assertTrue(config.showsZone());
+    config.spreadZone = false;
+    assertTrue(!config.showsZone());
+  }
 }

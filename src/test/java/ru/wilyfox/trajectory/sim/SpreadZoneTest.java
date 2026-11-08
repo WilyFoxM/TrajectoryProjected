@@ -113,10 +113,103 @@ class SpreadZoneTest {
             zone.axisU().scale(-1),
             zone.axisV().scale(-1),
             zone.direction(),
-            zone.coreRatio());
+            zone.coreRatio(),
+            zone.wideRatio());
     SpreadZone.Zone mid = SpreadZone.Zone.blend(zone, flipped, 0.5);
     assertEquals(zone.axisU().length(), mid.axisU().length(), 1.0e-9);
     assertEquals(zone.axisV().length(), mid.axisV().length(), 1.0e-9);
+  }
+
+  /** The rings hold their shares of shots they were not fitted on. */
+  @Test
+  void ringsHoldHalfAndNinetyPercent() {
+    for (float pitch : new float[] {5.0F, -10.0F, -30.0F}) {
+      Launch launch = launch(pitch);
+      Object[] h = hitOnFloor(launch);
+      SpreadZone.Zone zone = SpreadZone.compute(launch, ARROW, (Vec3d) h[0], (Vec3d) h[1]);
+      double[] shares = shares(launch, zone, new SplittableRandom(7), 4000);
+      assertEquals(0.5, shares[0], 0.05, "half ring at pitch " + pitch);
+      assertEquals(0.9, shares[1], 0.04, "wide ring at pitch " + pitch);
+      assertTrue(zone.coreRatio() < zone.wideRatio() && zone.wideRatio() <= 1.0);
+    }
+  }
+
+  @Test
+  void aPartialDrawCountedATickDifferentlyStaysInsideTheWidenedZone() {
+    ShooterState shooter = new ShooterState(FEET, 1.62F, 0.0F, -10.0F, Vec3d.ZERO, true);
+    int ticks = 12;
+    Launch nominal = BowShot.launch(shooter, ticks);
+    Trajectory t =
+        ArrowFlight.simulate(
+            nominal.spawn(), nominal.nominalVelocity(), TestWorld.floorAt(64.0), 600);
+    SpreadZone.Zone plain = SpreadZone.compute(nominal, ARROW, t.impact(), t.arrival());
+    SpreadZone.Zone widened =
+        SpreadZone.compute(BowShot.tickVariants(shooter, ticks), ARROW, t.impact(), t.arrival());
+    assertTrue(
+        widened.axisU().length() * widened.axisV().length()
+            > 1.5 * plain.axisU().length() * plain.axisV().length());
+    SplittableRandom random = new SplittableRandom(11);
+    double s = Launch.SPREAD_HALF_WIDTH;
+    for (int neighbour : new int[] {ticks - 1, ticks + 1}) {
+      Launch launch = BowShot.launch(shooter, neighbour);
+      int inPlain = 0;
+      for (int i = 0; i < 500; i++) {
+        Vec3d offset =
+            new Vec3d(
+                s * (random.nextDouble() - random.nextDouble()),
+                s * (random.nextDouble() - random.nextDouble()),
+                s * (random.nextDouble() - random.nextDouble()));
+        Vec3d crossing =
+            SpreadZone.crossing(
+                launch.spawn(),
+                launch.velocity(offset),
+                ARROW,
+                widened.center(),
+                widened.direction());
+        double[] c = widened.coordinates(crossing);
+        assertTrue(Math.hypot(c[0], c[1]) <= 1.0 + 1.0e-3, "tick " + neighbour);
+        double[] p = plain.coordinates(crossing);
+        if (Math.hypot(p[0], p[1]) <= 1.0) {
+          inPlain++;
+        }
+      }
+      assertTrue(inPlain < 250, "the plain zone should miss most of tick " + neighbour);
+    }
+  }
+
+  @Test
+  void tickVariantsLeaveOutWhatChangesNothing() {
+    ShooterState shooter = new ShooterState(FEET, 1.62F, 0.0F, 0.0F, Vec3d.ZERO, true);
+    assertEquals(3, BowShot.tickVariants(shooter, 12).size());
+    assertEquals(2, BowShot.tickVariants(shooter, 20).size(), "no power above full draw");
+    assertEquals(1, BowShot.tickVariants(shooter, 25).size(), "full draw either way");
+    assertEquals(2, BowShot.tickVariants(shooter, 3).size(), "no shot one tick earlier");
+    assertEquals(0, BowShot.tickVariants(shooter, 2).size(), "no shot at all");
+  }
+
+  private static double[] shares(Launch launch, SpreadZone.Zone zone, SplittableRandom r, int n) {
+    double s = Launch.SPREAD_HALF_WIDTH;
+    int half = 0;
+    int wide = 0;
+    for (int i = 0; i < n; i++) {
+      Vec3d offset =
+          new Vec3d(
+              s * (r.nextDouble() - r.nextDouble()),
+              s * (r.nextDouble() - r.nextDouble()),
+              s * (r.nextDouble() - r.nextDouble()));
+      Vec3d crossing =
+          SpreadZone.crossing(
+              launch.spawn(), launch.velocity(offset), ARROW, zone.center(), zone.direction());
+      double[] c = zone.coordinates(crossing);
+      double radius = Math.hypot(c[0], c[1]);
+      if (radius <= zone.coreRatio()) {
+        half++;
+      }
+      if (radius <= zone.wideRatio()) {
+        wide++;
+      }
+    }
+    return new double[] {half / (double) n, wide / (double) n};
   }
 
   private static double area(Launch launch) {

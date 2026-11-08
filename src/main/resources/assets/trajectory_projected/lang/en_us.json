@@ -37,7 +37,15 @@
   "trajectory_projected.setting.show_hidden": "Show behind blocks",
   "trajectory_projected.setting.show_hidden.description": "Parts of the path behind blocks are drawn faint and outlined.",
   "trajectory_projected.setting.spread_zone": "Spread zone",
-  "trajectory_projected.setting.spread_zone.description": "Where the server's random spread can put the arrow, shown as a shade on the blocks around the hit. Most shots land in the inner ring.",
+  "trajectory_projected.setting.spread_zone.description": "Where the server's random spread can put the arrow, shown as a shade on the blocks around the hit. The options below choose what it shows.",
+  "trajectory_projected.setting.zone_full": "Full spread",
+  "trajectory_projected.setting.zone_full.description": "The zone reaches the edge no shot crosses. Off, it ends at the widest ring that is on.",
+  "trajectory_projected.setting.zone_half_ring": "Ring for half of the shots",
+  "trajectory_projected.setting.zone_half_ring.description": "About half of the shots land inside this ring.",
+  "trajectory_projected.setting.zone_wide_ring": "Ring for 90%% of the shots",
+  "trajectory_projected.setting.zone_wide_ring.description": "About 90%% of the shots land inside this ring.",
+  "trajectory_projected.setting.zone_tick_correction": "Allow for draw timing",
+  "trajectory_projected.setting.zone_tick_correction.description": "On a server, a partial draw can count a tick more or less than here. The zone then covers that too: more accurate, but larger and busier. No effect in singleplayer or at full draw.",
   "trajectory_projected.setting.hit_marker": "Hit marker",
   "trajectory_projected.setting.hit_marker.description": "A larger dot where the arrow will land.",
   "trajectory_projected.setting.living_pulse": "Pulse on living targets",
@@ -46,5 +54,6 @@
   "trajectory_projected.setting.living_cross.description": "The hit marker becomes a cross when the arrow will hit a mob or a player.",
   "trajectory_projected.setting.crosshair_turn": "Turn the crosshair",
   "trajectory_projected.setting.crosshair_turn.description": "The crosshair turns into a cross when the arrow will hit a mob or a player.",
-  "trajectory_projected.unavailable.hit_marker_off": "Turn on the hit marker to use this."
+  "trajectory_projected.unavailable.hit_marker_off": "Turn on the hit marker to use this.",
+  "trajectory_projected.unavailable.spread_zone_off": "Turn on the spread zone to use this."
 }
