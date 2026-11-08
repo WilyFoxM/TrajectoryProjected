@@ -20,6 +20,7 @@ node_modules/
 
 # Native fixtures and local validation; pure-logic unit tests in src/test are public.
 /src/gametest/
+/src/releaseSmoke/
 /src/integrationTest/
 /src/testFixtures/
 /tests/
