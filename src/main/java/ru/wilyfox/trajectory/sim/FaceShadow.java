@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <p>Each box in front of the plane is projected along the direction onto the plane, which gives a
  * convex polygon; the face, a rectangle, is cut by each such polygon in turn. The result is a set
- * of convex pieces that do not overlap.
+ * of convex pieces that do not overlap. Light has a start: nothing behind it casts a shadow.
  */
 public final class FaceShadow {
   private static final double EPSILON = 1.0e-7;
@@ -60,6 +60,15 @@ public final class FaceShadow {
    * on the face's plane. Empty if the face looks away from the light or is fully in shadow.
    */
   public static List<List<Vec3d>> litPieces(AxisFace face, Vec3d direction, List<Aabb> boxes) {
+    return litPieces(face, direction, boxes, null);
+  }
+
+  /**
+   * {@link #litPieces(AxisFace, Vec3d, List)} for light starting at {@code start}: what lies behind
+   * the plane through it, facing along the direction, casts no shadow. {@code null}: no such limit.
+   */
+  public static List<List<Vec3d>> litPieces(
+      AxisFace face, Vec3d direction, List<Aabb> boxes, Vec3d start) {
     double[] d = {direction.x(), direction.y(), direction.z()};
     int k = face.axis();
     if (d[k] * face.sign() >= -EPSILON) {
@@ -80,7 +89,7 @@ public final class FaceShadow {
       if (pieces.isEmpty()) {
         break;
       }
-      double[][] shadow = shadow(face, d, ia, ib, box);
+      double[][] shadow = shadow(face, d, ia, ib, box, start);
       if (shadow == null) {
         continue;
       }
@@ -121,7 +130,8 @@ public final class FaceShadow {
   }
 
   /** The convex shadow of the part of {@code box} in front of the plane, or {@code null}. */
-  private static double[][] shadow(AxisFace face, double[] d, int ia, int ib, Aabb box) {
+  private static double[][] shadow(
+      AxisFace face, double[] d, int ia, int ib, Aabb box, Vec3d start) {
     double[] min = {box.minX(), box.minY(), box.minZ()};
     double[] max = {box.maxX(), box.maxY(), box.maxZ()};
     int k = face.axis();
@@ -138,17 +148,17 @@ public final class FaceShadow {
       max[k] = Math.min(max[k], c);
     }
 
-    double[][] points = new double[8][];
+    List<double[]> corners = inFrontOfStart(min, max, d, start);
+    if (corners.isEmpty()) {
+      return null;
+    }
+    double[][] points = new double[corners.size()][];
     double loA = Double.MAX_VALUE;
     double hiA = -Double.MAX_VALUE;
     double loB = Double.MAX_VALUE;
     double hiB = -Double.MAX_VALUE;
-    for (int i = 0; i < 8; i++) {
-      double[] p = {
-        (i & 1) == 0 ? min[0] : max[0],
-        (i & 2) == 0 ? min[1] : max[1],
-        (i & 4) == 0 ? min[2] : max[2]
-      };
+    for (int i = 0; i < points.length; i++) {
+      double[] p = corners.get(i);
       double t = (c - p[k]) / d[k];
       double a = p[ia] + d[ia] * t;
       double b = p[ib] + d[ib] * t;
@@ -166,6 +176,49 @@ public final class FaceShadow {
     }
     double[][] hull = hull(points);
     return hull.length >= 3 ? hull : null;
+  }
+
+  /**
+   * The corners of a box in front of the plane through {@code start}, and where its edges cross
+   * that plane: their hull is the part of the box that casts a shadow.
+   */
+  private static List<double[]> inFrontOfStart(
+      double[] min, double[] max, double[] d, Vec3d start) {
+    double[][] corners = new double[8][];
+    double[] along = new double[8];
+    for (int i = 0; i < 8; i++) {
+      corners[i] =
+          new double[] {
+            (i & 1) == 0 ? min[0] : max[0],
+            (i & 2) == 0 ? min[1] : max[1],
+            (i & 4) == 0 ? min[2] : max[2]
+          };
+      along[i] =
+          start == null
+              ? 1.0
+              : (corners[i][0] - start.x()) * d[0]
+                  + (corners[i][1] - start.y()) * d[1]
+                  + (corners[i][2] - start.z()) * d[2];
+    }
+    List<double[]> out = new ArrayList<>(12);
+    for (int i = 0; i < 8; i++) {
+      if (along[i] >= 0.0) {
+        out.add(corners[i]);
+      }
+      for (int axis = 1; axis < 8; axis <<= 1) {
+        int j = i | axis;
+        if (j != i && (along[i] >= 0.0) != (along[j] >= 0.0)) {
+          double t = along[i] / (along[i] - along[j]);
+          out.add(
+              new double[] {
+                corners[i][0] + (corners[j][0] - corners[i][0]) * t,
+                corners[i][1] + (corners[j][1] - corners[i][1]) * t,
+                corners[i][2] + (corners[j][2] - corners[i][2]) * t
+              });
+        }
+      }
+    }
+    return out;
   }
 
   /** Convex hull, counter-clockwise, by the monotone chain. */

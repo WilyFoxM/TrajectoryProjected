@@ -15,6 +15,19 @@ class FaceShadowTest {
   private static final Vec3d DOWN = new Vec3d(0, -1, 0);
 
   @Test
+  void nothingBehindTheStartCastsAShadow() {
+    List<Aabb> above = List.of(new Aabb(-1, 3, -1, 2, 4, 2));
+    assertTrue(FaceShadow.litPieces(TOP, DOWN, above).isEmpty());
+    // The start lies between the box and the face: the box is behind the light.
+    Vec3d start = new Vec3d(0.5, 2.0, 0.5);
+    assertEquals(1.0, totalArea(FaceShadow.litPieces(TOP, DOWN, above, start)), 1.0e-9);
+    // The start lies beyond the box: the box is on the way.
+    assertTrue(FaceShadow.litPieces(TOP, DOWN, above, new Vec3d(0.5, 5.0, 0.5)).isEmpty());
+    // The start lies inside the box: the part in front of it still shades the face.
+    assertTrue(FaceShadow.litPieces(TOP, DOWN, above, new Vec3d(0.5, 3.5, 0.5)).isEmpty());
+  }
+
+  @Test
   void anOpenFaceIsLitWhole() {
     List<List<Vec3d>> lit = FaceShadow.litPieces(TOP, DOWN, List.of());
     assertEquals(1.0, totalArea(lit), 1.0e-9);

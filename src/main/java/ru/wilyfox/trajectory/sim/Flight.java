@@ -14,6 +14,14 @@ public interface Flight {
    */
   Step step(Vec3d velocity);
 
+  /** {@link #step(Vec3d)} for a tick that began in water, for projectiles water slows down. */
+  default Step step(Vec3d velocity, boolean inWater) {
+    return step(velocity);
+  }
+
+  /** The projectile's bounding box at a position. */
+  Aabb box(Vec3d position);
+
   /** A free-air tick: the movement and the velocity it leaves. */
   record Step(Vec3d movement, Vec3d next) {}
 
@@ -39,8 +47,18 @@ public interface Flight {
 
       @Override
       public Step step(Vec3d velocity) {
-        return new Step(
-            velocity, velocity.scale(ArrowFlight.AIR_DRAG).add(0.0, -ArrowFlight.GRAVITY, 0.0));
+        return step(velocity, false);
+      }
+
+      @Override
+      public Step step(Vec3d velocity, boolean inWater) {
+        float slowdown = inWater ? waterInertia : ArrowFlight.AIR_DRAG;
+        return new Step(velocity, velocity.scale(slowdown).add(0.0, -ArrowFlight.GRAVITY, 0.0));
+      }
+
+      @Override
+      public Aabb box(Vec3d position) {
+        return ArrowFlight.box(position);
       }
 
       @Override
@@ -64,6 +82,11 @@ public interface Flight {
       }
 
       @Override
+      public Aabb box(Vec3d position) {
+        return FireworkFlight.box(position);
+      }
+
+      @Override
       public int maxTicks() {
         return FireworkFlight.lastExplosionTick(flightCount);
       }
@@ -80,8 +103,18 @@ public interface Flight {
 
       @Override
       public Step step(Vec3d velocity) {
-        Vec3d next = ThrowableFlight.nextVelocity(velocity, gravity, false);
+        return step(velocity, false);
+      }
+
+      @Override
+      public Step step(Vec3d velocity, boolean inWater) {
+        Vec3d next = ThrowableFlight.nextVelocity(velocity, gravity, inWater);
         return new Step(next, next);
+      }
+
+      @Override
+      public Aabb box(Vec3d position) {
+        return ThrowableFlight.box(position);
       }
 
       @Override
@@ -102,6 +135,11 @@ public interface Flight {
       @Override
       public Step step(Vec3d velocity) {
         return new Step(velocity, velocity);
+      }
+
+      @Override
+      public Aabb box(Vec3d position) {
+        return WindChargeFlight.box(position);
       }
 
       @Override

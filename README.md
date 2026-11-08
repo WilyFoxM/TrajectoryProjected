@@ -69,6 +69,8 @@ in game so far; see [Accuracy](#accuracy).
   the path stops at chunks that are not loaded, and Multishot volleys whose spread
   depends on conditions only the server can check show only the arrow that flies
   straight regardless.
+- A shot into water shows no zone where its spread scatters too widely to say where
+  the arrow lands, as near a shore.
 
 ## Getting started
 
