@@ -30,6 +30,8 @@ import ru.wilyfox.trajectory.sim.Vec3d;
  * server sent (velocity quantized by the packet), the spread offset that implies, and where the
  * arrow came to rest compared with two predictions: the nominal one shown to the player, and one
  * re-simulated from the server's launch, which isolates the flight model from the random spread.
+ * The rest position is the one the server reports after the arrow stops; where the client's own
+ * copy stopped is kept in a separate column.
  *
  * <p>Rows go to {@code trajectory-reports/shots-<time>.csv} in the game directory.
  */
@@ -42,6 +44,13 @@ final class ShotLog {
   private static final long MATCH_WINDOW_TICKS = 40;
 
   private static final int MAX_TRACK_TICKS = 600;
+
+  /**
+   * How long to wait after the client's copy of the arrow stops. The copy flies by itself from the
+   * launch packet, so at that moment it only repeats the re-simulation; the server's position
+   * arrives afterwards, and that is what the row must compare with.
+   */
+  private static final int SETTLE_TICKS = 40;
 
   private static ShotPreview.Prediction pending;
   private static final List<Tracked> tracked = new ArrayList<>();
@@ -84,8 +93,20 @@ final class ShotLog {
       Tracked shot = it.next();
       shot.age++;
       boolean resting = ((AbstractArrowAccessor) shot.arrow).trajectory$isInGround();
-      if (resting || shot.arrow.isRemoved() || shot.age > MAX_TRACK_TICKS) {
-        write(shot, resting ? "rest" : shot.arrow.isRemoved() ? "removed" : "timeout");
+      if (resting && shot.firstRest == null) {
+        shot.firstRest = ClientWorldView.own(shot.arrow.position());
+        shot.settle = SETTLE_TICKS;
+      }
+      if (shot.arrow.isRemoved()) {
+        write(shot, shot.firstRest != null ? "rest_unsettled" : "removed");
+        it.remove();
+      } else if (shot.firstRest != null) {
+        if (--shot.settle <= 0) {
+          write(shot, "rest");
+          it.remove();
+        }
+      } else if (shot.age > MAX_TRACK_TICKS) {
+        write(shot, "timeout");
         it.remove();
       }
     }
@@ -121,7 +142,8 @@ final class ShotLog {
             vec(serverEnd),
             vec(actual),
             num(Math.sqrt(nominalEnd.distanceToSqr(actual))),
-            num(Math.sqrt(serverEnd.distanceToSqr(actual))));
+            num(Math.sqrt(serverEnd.distanceToSqr(actual))),
+            shot.firstRest == null ? ",," : vec(shot.firstRest));
     LOG.info("shot {}", row);
     try {
       if (file == null) {
@@ -155,7 +177,8 @@ final class ShotLog {
           "resim_end_x,resim_end_y,resim_end_z",
           "rest_x,rest_y,rest_z",
           "pred_error",
-          "resim_error");
+          "resim_error",
+          "client_rest_x,client_rest_y,client_rest_z");
 
   private static String vec(Vec3d v) {
     return num(v.x()) + "," + num(v.y()) + "," + num(v.z());
@@ -172,6 +195,8 @@ final class ShotLog {
     final Vec3d velocity;
     final Trajectory fromServer;
     int age;
+    Vec3d firstRest;
+    int settle;
 
     Tracked(
         Arrow arrow,
