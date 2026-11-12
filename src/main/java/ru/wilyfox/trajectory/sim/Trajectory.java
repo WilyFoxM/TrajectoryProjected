@@ -61,6 +61,8 @@ public record Trajectory(
     BLOCK,
     /** Hit an entity. */
     ENTITY,
+    /** Came to rest floating on water: a fishing hook. */
+    FLOATING,
     /** Started a tick inside a collision box. */
     STUCK,
     /** Fell below the world. */

@@ -38,6 +38,9 @@ in game so far; see [Accuracy](#accuracy).
   shows nothing.
 - **Thrown items**: snowballs, eggs, ender pearls, splash and lingering potions,
   bottles o' enchanting and wind charges.
+- **Fishing rod** while held and not cast: the path of the cast and a ghost of the
+  hook where it will land, with a ring when it will float on water. Hooking a mob or
+  a player shows the cross.
 
 **The line**
 
@@ -83,7 +86,7 @@ Nothing needs to be installed on the server.
 Press **F7** in-game to open settings. A key to turn trajectories on and off can be
 set under **Options → Controls → Key Binds → Trajectory Projected**.
 
-Settings are grouped into General, Line and Target: the lead-in from the side, dot
+Settings are grouped into General, Line and Target: the fishing rod, the lead-in from the side, dot
 size and spacing, dimming far away, the path behind blocks, the spread zone, the
 hit marker and the cues on living targets each have their own switch. Search works
 across all pages; hover a setting for details. Changes save automatically. English

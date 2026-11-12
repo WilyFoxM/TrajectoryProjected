@@ -166,6 +166,35 @@ final class DotRenderer {
       RenderType.create(
           MOD_ID + "_dots_hidden", RenderSetup.builder(HIDDEN).sortOnUpload().createRenderSetup());
 
+  /** The hook of a fishing rod where it will land: a ghost of the bobber. */
+  private static final RenderPipeline BOBBER =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/bobber"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/bobber"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withCull(false)
+          .build();
+
+  private static final RenderPipeline BOBBER_HIDDEN =
+      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+          .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/bobber_hidden"))
+          .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
+          .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/bobber_hidden"))
+          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withCull(false)
+          .build();
+
+  private static final RenderType BOBBERS =
+      RenderType.create(
+          MOD_ID + "_bobber", RenderSetup.builder(BOBBER).sortOnUpload().createRenderSetup());
+
+  private static final RenderType BOBBERS_HIDDEN =
+      RenderType.create(
+          MOD_ID + "_bobber_hidden",
+          RenderSetup.builder(BOBBER_HIDDEN).sortOnUpload().createRenderSetup());
+
   private static final RenderType CROSSES =
       RenderType.create(
           MOD_ID + "_cross", RenderSetup.builder(CROSS).sortOnUpload().createRenderSetup());
@@ -263,6 +292,30 @@ final class DotRenderer {
   private static final double CROSS_SCALE = 1.35;
 
   /**
+   * Half the side of the ghost bobber's square, in blocks: the vanilla bobber is half a block tall.
+   * On screen it stays between these sizes in pixels, so its shape can be read far away.
+   */
+  private static final double BOBBER_HALF = 0.25;
+
+  private static final double BOBBER_MIN_PX = 7.0;
+  private static final double BOBBER_MAX_PX = 40.0;
+
+  /**
+   * Where the float's body ends below the square's center, as a share of its half side ({@code
+   * bobber.fsh}): on the ground the square is raised by this. On water by most of it: water is
+   * drawn over what lies under its surface and would hide the float.
+   */
+  private static final double BOBBER_BOTTOM = 0.64;
+
+  /** The ring on the water around a floating hook, in blocks, and its lift off the surface. */
+  private static final double RING_RADIUS = 0.45;
+
+  private static final double RING_LIFT = 0.02;
+
+  /** Zone shader bit: only the rim, no shade inside. */
+  private static final int ZONE_RIM_ONLY = 8;
+
+  /**
    * On a living target the path breathes: opacity dips by up to {@link #PULSE_ALPHA} and dots grow
    * by up to {@link #PULSE_SIZE}, the cross by up to {@link #PULSE_MARKER_SIZE}, once per {@link
    * #PULSE_PERIOD_MS}. The pulse eases in and out over {@link #PULSE_EASE_MS} when the target
@@ -343,6 +396,7 @@ final class DotRenderer {
           context,
           minecraft,
           config,
+          current.weapon(),
           shot,
           before,
           partial,
@@ -360,6 +414,7 @@ final class DotRenderer {
       LevelRenderContext context,
       Minecraft minecraft,
       TrajectoryConfig config,
+      ShotPreview.Weapon weapon,
       ShotPreview.Shot current,
       ShotPreview.Shot previous,
       float partial,
@@ -375,7 +430,11 @@ final class DotRenderer {
             ? current.path().points()
             : blend(previous.path().points(), current.path().points(), partial);
     Trajectory.End end = current.path().end();
-    boolean hit = config.hitMarker && (end == Trajectory.End.BLOCK || end == Trajectory.End.ENTITY);
+    boolean hit =
+        config.hitMarker
+            && (end == Trajectory.End.BLOCK
+                || end == Trajectory.End.ENTITY
+                || end == Trajectory.End.FLOATING);
     boolean cross = current.livingTarget() && config.livingCross;
     Vec3d markerAt = path.isEmpty() ? null : path.getLast();
     if (end == Trajectory.End.ENTITY && markerAt != null) {
@@ -415,7 +474,18 @@ final class DotRenderer {
       submit(
           context, poseStack, DOTS_OVERLAY_HIDDEN, layout.overlayHidden(), up, left, HIDDEN_SCALE);
     }
-    if (layout.marker() != null) {
+    if (end == Trajectory.End.FLOATING && config.hitMarker && markerAt != null) {
+      submitRing(context, markerAt, camera.pos);
+    }
+    if (layout.marker() != null && weapon == ShotPreview.Weapon.ROD && !cross) {
+      Dot m = layout.marker();
+      List<Dot> bobber =
+          List.of(bobber(markerAt, end == Trajectory.End.FLOATING, camera.pos, pixelsPerRadian, m));
+      submit(context, poseStack, BOBBERS, bobber, up, left, 1.0);
+      if (config.showHidden) {
+        submit(context, poseStack, BOBBERS_HIDDEN, bobber, up, left, 1.0);
+      }
+    } else if (layout.marker() != null) {
       Dot m = layout.marker();
       List<Dot> marker =
           List.of(
@@ -549,6 +619,52 @@ final class DotRenderer {
               }
             }
           }
+        });
+  }
+
+  /** The ghost bobber standing where the hook will lie, or floating half in the water. */
+  private static Dot bobber(Vec3d at, boolean floating, Vec3 cam, double pixelsPerRadian, Dot m) {
+    double size = size();
+    double dx = at.x() - cam.x;
+    double dy = at.y() - cam.y;
+    double dz = at.z() - cam.z;
+    double distance = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 1.0e-6);
+    double angle =
+        Math.clamp(
+            BOBBER_HALF * size / distance,
+            BOBBER_MIN_PX * size / pixelsPerRadian,
+            BOBBER_MAX_PX * size / pixelsPerRadian);
+    double half = angle * distance;
+    double raise = half * BOBBER_BOTTOM * (floating ? 0.8 : 1.0);
+    return new Dot(dx, dy + raise, dz, half, m.alpha());
+  }
+
+  /** A flat ring on the water where the hook will float, drawn like the zone's rim. */
+  private static void submitRing(LevelRenderContext context, Vec3d at, Vec3 cam) {
+    double distance = Math.sqrt(sq(at.x() - cam.x) + sq(at.y() - cam.y) + sq(at.z() - cam.z));
+    double alpha = fade(distance);
+    if (alpha <= 0.0) {
+      return;
+    }
+    int color =
+        ((int) Math.round(255 * alpha) << 24)
+            | (128 << 16)
+            | (230 << 8)
+            | (ZONE_FULL | ZONE_RIM_ONLY);
+    float y = (float) (at.y() + RING_LIFT - cam.y);
+    float x = (float) (at.x() - cam.x);
+    float z = (float) (at.z() - cam.z);
+    float r = (float) RING_RADIUS;
+    emit(
+        context,
+        SUBMIT_ORDER - 1,
+        context.poseStack(),
+        AfterShaders.active() ? ZONES_OVER_SHADERS : ZONES,
+        (pose, buffer) -> {
+          buffer.addVertex(pose, x - r, y, z - r).setUv(-1.0F, -1.0F).setColor(color);
+          buffer.addVertex(pose, x - r, y, z + r).setUv(-1.0F, 1.0F).setColor(color);
+          buffer.addVertex(pose, x + r, y, z + r).setUv(1.0F, 1.0F).setColor(color);
+          buffer.addVertex(pose, x + r, y, z - r).setUv(1.0F, -1.0F).setColor(color);
         });
   }
 

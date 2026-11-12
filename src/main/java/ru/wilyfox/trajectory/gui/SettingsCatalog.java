@@ -57,6 +57,7 @@ final class SettingsCatalog {
   static List<Option> create() {
     var options = new ArrayList<Option>();
     options.add(toggle("enabled", Page.GENERAL, () -> c().enabled, v -> c().enabled = v));
+    options.add(toggle("fishing_rod", Page.GENERAL, () -> c().fishingRod, v -> c().fishingRod = v));
     options.add(
         toggle(
             "first_person_lead_in",

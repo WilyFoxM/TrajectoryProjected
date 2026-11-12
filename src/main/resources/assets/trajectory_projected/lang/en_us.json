@@ -26,6 +26,8 @@
   "trajectory_projected.page.target": "Target",
   "trajectory_projected.setting.enabled": "Show trajectories",
   "trajectory_projected.setting.enabled.description": "Shows where the arrow will fly while you draw a bow. A key to switch it can be set in Controls.",
+  "trajectory_projected.setting.fishing_rod": "Fishing rod",
+  "trajectory_projected.setting.fishing_rod.description": "While you hold a fishing rod, shows where the hook will land, and a ring when it will float on water.",
   "trajectory_projected.setting.first_person_lead_in": "Lead-in from the side",
   "trajectory_projected.setting.first_person_lead_in.description": "In first person the line starts beside the view and bends into the path, so it does not collapse under the crosshair.",
   "trajectory_projected.setting.dot_size": "Dot size",

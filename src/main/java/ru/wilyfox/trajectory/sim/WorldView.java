@@ -35,6 +35,18 @@ public interface WorldView {
    */
   List<EntityTarget> entities(Aabb area);
 
+  /**
+   * Block collision boxes that may touch {@code area}, for entities that move with collisions
+   * ({@code Level.getBlockCollisions}).
+   */
+  List<Aabb> collisions(Aabb area);
+
+  /**
+   * Height of water in the block at these coordinates, 0 to 1, or 0 without water ({@code
+   * FluidState.getHeight} for water).
+   */
+  float waterHeight(int x, int y, int z);
+
   /** Arrows are removed below {@code minY - 64} ({@code Entity.checkBelowWorld}). */
   double minY();
 

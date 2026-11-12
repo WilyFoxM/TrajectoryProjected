@@ -158,6 +158,25 @@ public final class ClientWorldView implements WorldView {
     return new Vec3d(v.x, v.y, v.z);
   }
 
+  /** {@code Level.getBlockCollisions} without an entity: block collision shapes as boxes. */
+  @Override
+  public List<Aabb> collisions(Aabb area) {
+    List<Aabb> boxes = new ArrayList<>();
+    for (VoxelShape shape : level.getBlockCollisions(null, vanilla(area))) {
+      for (AABB b : shape.toAabbs()) {
+        boxes.add(new Aabb(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ));
+      }
+    }
+    return boxes;
+  }
+
+  @Override
+  public float waterHeight(int x, int y, int z) {
+    BlockPos pos = new BlockPos(x, y, z);
+    FluidState fluid = level.getFluidState(pos);
+    return fluid.is(FluidTags.WATER) ? fluid.getHeight(level, pos) : 0.0F;
+  }
+
   private static AABB vanilla(Aabb b) {
     return new AABB(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
   }

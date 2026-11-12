@@ -26,6 +26,8 @@
   "trajectory_projected.page.target": "Цель",
   "trajectory_projected.setting.enabled": "Показывать траектории",
   "trajectory_projected.setting.enabled.description": "Показывает, куда полетит стрела, пока вы натягиваете лук. Клавишу для переключения можно задать в «Управлении».",
+  "trajectory_projected.setting.fishing_rod": "Удочка",
+  "trajectory_projected.setting.fishing_rod.description": "Пока в руке удочка, показывает, куда упадёт поплавок, и кольцо, если он поплывёт по воде.",
   "trajectory_projected.setting.first_person_lead_in": "Подводка сбоку",
   "trajectory_projected.setting.first_person_lead_in.description": "От первого лица линия начинается сбоку от взгляда и плавно переходит в путь, чтобы не сжиматься под прицелом.",
   "trajectory_projected.setting.dot_size": "Размер точек",
