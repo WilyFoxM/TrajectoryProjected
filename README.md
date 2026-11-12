@@ -24,7 +24,7 @@ Every shot also carries the server's random spread, which no line can show. Arou
 the hit, a spread zone falls on the blocks like a shadow and marks where the
 projectile can actually land.
 
-This is the first release, 0.1.0, and it is a beta. Only the bow has been measured
+Trajectory Projected is in beta. Only the bow has been measured
 in game so far; see [Accuracy](#accuracy).
 
 ## What it shows
