@@ -50,6 +50,10 @@ public record Aabb(double minX, double minY, double minZ, double maxX, double ma
     return new Aabb(nMinX, nMinY, nMinZ, nMaxX, nMaxY, nMaxZ);
   }
 
+  public Aabb move(double dx, double dy, double dz) {
+    return new Aabb(minX + dx, minY + dy, minZ + dz, maxX + dx, maxY + dy, maxZ + dz);
+  }
+
   public Aabb inflate(double amount) {
     return new Aabb(
         minX - amount, minY - amount, minZ - amount, maxX + amount, maxY + amount, maxZ + amount);

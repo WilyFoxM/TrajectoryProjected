@@ -35,6 +35,9 @@ public final class TrajectoryConfig {
   /** Master switch: no prediction, line or crosshair change while off. */
   public boolean enabled = true;
 
+  /** While a fishing rod is held and not cast: where the hook would land. */
+  public boolean fishingRod = true;
+
   /** First person: the line starts beside the eye and bends into the real path. */
   public boolean firstPersonLeadIn = true;
 

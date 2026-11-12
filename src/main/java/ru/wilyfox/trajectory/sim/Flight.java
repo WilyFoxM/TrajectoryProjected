@@ -68,6 +68,33 @@ public interface Flight {
     };
   }
 
+  /** A fishing hook: {@link FishingHookFlight}. */
+  static Flight fishingHook(int maxTicks) {
+    return new Flight() {
+      @Override
+      public Trajectory simulate(Vec3d spawn, Vec3d velocity, WorldView world) {
+        return FishingHookFlight.simulate(spawn, velocity, world, maxTicks);
+      }
+
+      /** Gravity before the move, inertia after it. */
+      @Override
+      public Step step(Vec3d velocity) {
+        Vec3d movement = velocity.add(0.0, -FishingHookFlight.GRAVITY, 0.0);
+        return new Step(movement, movement.scale(FishingHookFlight.INERTIA));
+      }
+
+      @Override
+      public Aabb box(Vec3d position) {
+        return FishingHookFlight.box(position);
+      }
+
+      @Override
+      public int maxTicks() {
+        return maxTicks;
+      }
+    };
+  }
+
   /** A rocket shot at an angle from a crossbow: {@link FireworkFlight}. */
   static Flight firework(int flightCount) {
     return new Flight() {

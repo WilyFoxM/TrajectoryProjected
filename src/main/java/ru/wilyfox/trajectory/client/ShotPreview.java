@@ -22,6 +22,7 @@ import org.apache.commons.lang3.mutable.MutableFloat;
 import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.BowShot;
 import ru.wilyfox.trajectory.sim.CrossbowShot;
+import ru.wilyfox.trajectory.sim.FishingShot;
 import ru.wilyfox.trajectory.sim.Flight;
 import ru.wilyfox.trajectory.sim.Launch;
 import ru.wilyfox.trajectory.sim.ShooterState;
@@ -45,6 +46,9 @@ import ru.wilyfox.trajectory.sim.WorldView;
 public final class ShotPreview {
   /** Twenty seconds of flight; a full-power arrow lands well within it. */
   private static final int MAX_TICKS = 400;
+
+  /** A cast lands within a few seconds; bobbing settles within a couple more. */
+  private static final int HOOK_TICKS = 200;
 
   private static final DrawCounter DRAW = new DrawCounter();
   private static InteractionHand drawHand = InteractionHand.MAIN_HAND;
@@ -196,6 +200,12 @@ public final class ShotPreview {
                     : WindChargeShot.launch(SentState.shooter(player)),
                 0);
       }
+      if (stack.is(Items.FISHING_ROD)) {
+        // With the hook out, a click reels it in instead of casting.
+        return player.fishing == null && TrajectoryConfig.get().fishingRod
+            ? rod(player, level, hand)
+            : null;
+      }
       ThrowShot.Item thrown = thrown(stack);
       if (thrown != null) {
         // A throw on cooldown (an ender pearl right after the last) does not happen.
@@ -266,6 +276,20 @@ public final class ShotPreview {
     }
     Shot shot = shot(player, level, flight, launch);
     return new Prediction(weapon, hand, List.of(shot), ticksHeld, level.getGameTime());
+  }
+
+  /**
+   * A fishing rod in hand, not cast: where the hook would land. Its random spread moves the landing
+   * by a tenth of a block or so, less than the ghost of the hook drawn there, so it has no zone.
+   */
+  private static Prediction rod(LocalPlayer player, ClientLevel level, InteractionHand hand) {
+    ShooterState shooter = SentState.shooter(player);
+    if (shooter == null) {
+      return null;
+    }
+    Shot shot =
+        shot(player, level, Flight.fishingHook(HOOK_TICKS), FishingShot.launch(shooter), List.of());
+    return new Prediction(Weapon.ROD, hand, List.of(shot), 0, level.getGameTime());
   }
 
   private static Prediction toss(
@@ -358,6 +382,7 @@ public final class ShotPreview {
     SpreadZone.Zone zone = null;
     Vec3d shadowsFrom = launch.spawn();
     if (TrajectoryConfig.get().showsZone()
+        && !variants.isEmpty()
         && path.end() == Trajectory.End.BLOCK
         && path.impact() != null) {
       // The impact and the final movement, not the rest point: vanilla backs a stuck arrow off
@@ -423,7 +448,8 @@ public final class ShotPreview {
     BOW,
     CROSSBOW,
     TRIDENT,
-    THROW
+    THROW,
+    ROD
   }
 
   /**

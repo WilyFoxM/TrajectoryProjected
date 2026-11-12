@@ -61,6 +61,28 @@ final class TestWorld implements WorldView {
   }
 
   @Override
+  public List<Aabb> collisions(Aabb area) {
+    List<Aabb> found = new ArrayList<>();
+    for (Aabb solid : solids) {
+      if (solid.inflate(1.0E-7).intersects(area)) {
+        found.add(solid);
+      }
+    }
+    return found;
+  }
+
+  /** Water fills a block whose bottom lies in a water volume, up to the volume's top. */
+  @Override
+  public float waterHeight(int x, int y, int z) {
+    for (Aabb volume : water) {
+      if (volume.contains(new Vec3d(x + 0.5, y + 0.01, z + 0.5))) {
+        return (float) Math.min(1.0, volume.maxY() - y);
+      }
+    }
+    return 0.0F;
+  }
+
+  @Override
   public List<EntityTarget> entities(Aabb area) {
     entityQueries++;
     List<EntityTarget> found = new ArrayList<>();

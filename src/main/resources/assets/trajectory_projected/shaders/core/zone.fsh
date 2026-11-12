@@ -24,6 +24,8 @@ void main() {
     bool full = (parts & 1) != 0;
     bool halfRing = (parts & 2) != 0;
     bool wideRing = (parts & 4) != 0;
+    // A ring alone, as on the water around a floating hook.
+    bool rimOnly = (parts & 8) != 0;
     float core = vertexColor.r;
     float wide = vertexColor.g;
     // The zone ends at the widest part that is on.
@@ -33,14 +35,14 @@ void main() {
     }
     float inside = 1.0 - smoothstep(edge - aa, edge + aa, r);
     float density = mix(1.0, 0.35, smoothstep(core * 0.5, 1.0, r));
-    float fill = FILL_ALPHA * density * inside;
+    float fill = rimOnly ? 0.0 : FILL_ALPHA * density * inside;
     float rim = 1.0 - smoothstep(0.4 * aa, 1.1 * aa, abs(r - edge));
     float light = rim * RIM_ALPHA;
-    if (halfRing) {
+    if (halfRing && !rimOnly) {
         float ring = 1.0 - smoothstep(0.3 * aa, 0.9 * aa, abs(r - core));
         light = max(light, ring * RING_ALPHA);
     }
-    if (wideRing) {
+    if (wideRing && !rimOnly) {
         float ring = 1.0 - smoothstep(0.3 * aa, 0.9 * aa, abs(r - wide));
         light = max(light, ring * RING_ALPHA);
     }
