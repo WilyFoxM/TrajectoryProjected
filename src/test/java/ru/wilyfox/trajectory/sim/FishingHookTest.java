@@ -141,8 +141,6 @@ class FishingHookTest {
             HOOK.simulate(launch.spawn(), FishingShot.velocity(launch, scales), world).last();
         far = Math.max(far, Math.sqrt(end.distanceToSqr(center)));
       }
-      System.out.println(
-          "HOOKSPREAD pitch " + pitch + " distance " + center.z() + " spread " + far);
       assertTrue(far < 0.6, "spread " + far + " at pitch " + pitch);
     }
   }
