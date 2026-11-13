@@ -24,8 +24,8 @@ Every shot also carries the server's random spread, which no line can show. Arou
 the hit, a spread zone falls on the blocks like a shadow and marks where the
 projectile can actually land.
 
-Trajectory Projected is in beta. Only the bow has been measured
-in game so far; see [Accuracy](#accuracy).
+The bow has been measured in game with logged shots, and the fishing rod against real
+casts; see [Accuracy](#accuracy).
 
 ## What it shows
 
@@ -136,6 +136,20 @@ stopped a median of 0.6 blocks from the predicted point at 25 blocks, 1.6 at 43 
 1.3 at 59, and never more than 4.6. Zero misses in 184 singleplayer launches puts the
 real rate below about 1.6% (95% confidence).
 
+The zone's rings hold up against real shots. The log has the spread the server drew
+for each arrow, and of 291 bow shots, 48.8% fell inside the half ring (95% confidence
+43–55%) and 92.4% inside the 90% ring (89–95%). This is counted across the launch
+direction, before the flight bends the spread. The 43 shots the server counted at
+another draw tick are left out.
+
+### Fishing rod
+
+In my test runs in singleplayer, real casts on the ground, on water, against a wall
+and next to a mob came to rest within 0.09 blocks of the prediction. The hook's own
+random spread moves it by up to about 0.2 blocks, less than the ghost bobber. On my
+own server, the same one as above, I didn't notice a cast landing outside the ghost,
+even on the very edge of a block. That was by eye, not logged.
+
 ### Spread on servers
 
 At full draw a server behaved like singleplayer. A partial draw is different: the
@@ -160,11 +174,11 @@ shots yet.
 
 - The server results come from one server and one evening: about 166 ms ping and no
   other players. Other latency, server load or plugins may give different numbers.
-- Only the bow has been measured this way. Other projectiles had short singleplayer
-  checks: 10 crossbow arrows, 4 ender pearls and 3 tridents all landed inside their
-  zones.
-- The zone's rings are computed from simulated spread. I haven't counted real arrows
-  against them.
+- Only the bow has been measured with logged shots. The crossbow, the trident and
+  thrown items had short singleplayer checks: 10 crossbow arrows, 4 ender pearls and 3
+  tridents all landed inside their zones. On a server the fishing rod was checked by
+  eye only.
+- The widened zone for draw timing has not been checked against real shots.
 - A client loses track of an arrow at about 64 blocks, so past that distance the log
   has only the arrow's last known position.
 
