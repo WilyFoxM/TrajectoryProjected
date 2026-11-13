@@ -235,13 +235,6 @@ final class DotRenderer {
   private static final double LIFT = 1.25;
   private static final double ENTITY_PULL = 0.25;
 
-  /**
-   * Submit order for all our geometry. Entity layers use orders from 1 up (a slime's shell, eyes,
-   * armor), and an order is drawn after all lower ones; a late order keeps the line and the marker
-   * on top of translucent entity layers instead of tinted under them.
-   */
-  private static final int SUBMIT_ORDER = 64;
-
   /** Near the camera the line fades in over these distances, so it does not cover the crosshair. */
   private static final double NEAR_FADE_START = 1.0;
 
@@ -343,12 +336,10 @@ final class DotRenderer {
   private DotRenderer() {}
 
   static void collect(LevelRenderContext context) {
-    if (AfterShaders.shadowPass()) {
+    if (AfterLevel.shadowPass()) {
       return;
     }
-    if (AfterShaders.active()) {
-      AfterShaders.beginFrame();
-    }
+    AfterLevel.beginFrame();
     ShotPreview.Prediction current = ShotPreview.current();
     if (current == null) {
       return;
@@ -596,9 +587,8 @@ final class DotRenderer {
             | parts;
     emit(
         context,
-        SUBMIT_ORDER - 1,
         context.poseStack(),
-        AfterShaders.active() ? ZONES_OVER_SHADERS : ZONES,
+        AfterLevel.shaderPackActive() ? ZONES_OVER_SHADERS : ZONES,
         (pose, buffer) -> {
           for (ZoneSurfaces.Patch patch : patches) {
             // A convex polygon as a fan of quads; an odd last one repeats its final corner.
@@ -657,9 +647,8 @@ final class DotRenderer {
     float r = (float) RING_RADIUS;
     emit(
         context,
-        SUBMIT_ORDER - 1,
         context.poseStack(),
-        AfterShaders.active() ? ZONES_OVER_SHADERS : ZONES,
+        AfterLevel.shaderPackActive() ? ZONES_OVER_SHADERS : ZONES,
         (pose, buffer) -> {
           buffer.addVertex(pose, x - r, y, z - r).setUv(-1.0F, -1.0F).setColor(color);
           buffer.addVertex(pose, x - r, y, z + r).setUv(-1.0F, 1.0F).setColor(color);
@@ -681,28 +670,23 @@ final class DotRenderer {
     }
     emit(
         context,
-        SUBMIT_ORDER,
         poseStack,
         type,
         (pose, buffer) -> dots.forEach(d -> d.emit(pose, buffer, up, left, scale)));
   }
 
   /**
-   * Hands geometry to the level's submit collector, or, with a shader pack active, to {@link
-   * AfterShaders} to draw once the pack has composed the frame.
+   * Hands geometry to {@link AfterLevel}, to draw once the level is rendered: over water and other
+   * translucent layers, which would otherwise tint it, and over entity layers. Drawn in the order
+   * handed over: the zone first, then the line and the marker.
    */
   private static void emit(
       LevelRenderContext context,
-      int order,
       PoseStack poseStack,
       RenderType type,
       SubmitNodeCollector.CustomGeometryRenderer geometry) {
-    if (AfterShaders.active()) {
-      AfterShaders.record(
-          context.levelState().cameraRenderState.viewRotationMatrix, poseStack, type, geometry);
-      return;
-    }
-    context.submitNodeCollector().order(order).submitCustomGeometry(poseStack, type, geometry);
+    AfterLevel.record(
+        context.levelState().cameraRenderState.viewRotationMatrix, poseStack, type, geometry);
   }
 
   /**
