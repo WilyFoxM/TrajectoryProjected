@@ -25,13 +25,14 @@ import org.joml.Matrix4fc;
 import ru.wilyfox.trajectory.TrajectoryProjected;
 
 /**
- * Drawing after an Iris shader pack has composed the frame. While a pack is active, Iris draws the
- * level with the pack's programs and skips pipelines it has no program for, ours included. So the
- * geometry is recorded during the level's submit phase instead, and replayed with our own pipelines
- * right after the level render returns: onto the finished image, depth-tested against the main
- * depth buffer the pack leaves behind.
+ * Drawing after the level has been rendered, onto the finished image, depth-tested against the main
+ * depth buffer. By then water and other translucent layers are drawn, and composed where improved
+ * transparency keeps them apart, so they do not tint the line; with an Iris shader pack, the pack
+ * has composed the frame too, and it skips pipelines it has no program for, ours included. The
+ * geometry is recorded during the level's submit phase and replayed with our own pipelines right
+ * after the level render returns.
  */
-public final class AfterShaders {
+public final class AfterLevel {
   private static final boolean IRIS = FabricLoader.getInstance().isModLoaded("iris");
   private static final MethodHandle PACK_IN_USE = resolve("isShaderPackInUse");
   private static final MethodHandle SHADOW_PASS = resolve("isRenderingShadowPass");
@@ -39,10 +40,10 @@ public final class AfterShaders {
   private static final List<Recorded> RECORDED = new ArrayList<>();
   private static Matrix4fc viewRotation;
 
-  private AfterShaders() {}
+  private AfterLevel() {}
 
   /** Whether a shader pack is active now; read every frame, since a pack can be toggled. */
-  public static boolean active() {
+  public static boolean shaderPackActive() {
     return call(PACK_IN_USE);
   }
 
@@ -78,7 +79,7 @@ public final class AfterShaders {
       PoseStack poseStack,
       RenderType type,
       SubmitNodeCollector.CustomGeometryRenderer geometry) {
-    AfterShaders.viewRotation = new Matrix4f(viewRotation);
+    AfterLevel.viewRotation = new Matrix4f(viewRotation);
     RECORDED.add(new Recorded(type, poseStack.last().copy(), geometry));
   }
 
