@@ -146,9 +146,9 @@ another draw tick are left out.
 
 In my test runs in singleplayer, real casts on the ground, on water, against a wall
 and next to a mob came to rest within 0.09 blocks of the prediction. The hook's own
-random spread moves it by up to about 0.2 blocks, less than the ghost bobber. In
-normal play I didn't notice a cast landing outside the ghost, even on the very edge of
-a block.
+random spread moves it by up to about 0.2 blocks, less than the ghost bobber. On my
+own server, the same one as above, I didn't notice a cast landing outside the ghost,
+even on the very edge of a block. That was by eye, not logged.
 
 ### Spread on servers
 
@@ -176,8 +176,8 @@ shots yet.
   other players. Other latency, server load or plugins may give different numbers.
 - Only the bow has been measured with logged shots. The crossbow, the trident and
   thrown items had short singleplayer checks: 10 crossbow arrows, 4 ender pearls and 3
-  tridents all landed inside their zones. The fishing rod has not been measured on a
-  server.
+  tridents all landed inside their zones. On a server the fishing rod was checked by
+  eye only.
 - The widened zone for draw timing has not been checked against real shots.
 - A client loses track of an arrow at about 64 blocks, so past that distance the log
   has only the arrow's last known position.
