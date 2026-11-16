@@ -1,7 +1,6 @@
 package ru.wilyfox.trajectory.sim;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -11,7 +10,8 @@ import java.util.List;
  * <ol>
  *   <li>{@code applyInertia}: acceleration power 0 and inertia 1.0, in air and water alike, so the
  *       velocity never changes; no gravity;
- *   <li>find the hit along the velocity (collider shapes, entity margin as for other projectiles);
+ *   <li>find the hit along the velocity (collider shapes, then the nearest entity box inflated by
+ *       {@code computeMargin});
  *   <li>move to the hit or by the velocity;
  *   <li>{@code Projectile.tick}: check whether the charge has left its owner (from the next tick
  *       on).
@@ -55,27 +55,18 @@ public final class WindChargeFlight {
 
       Vec3d origin = pos;
       Aabb searchArea = box(pos).expandTowards(velocity).inflate(1.0);
-      List<ArrowFlight.Hit> hits =
-          ArrowFlight.entityHits(
+      ArrowFlight.Hit hit =
+          ArrowFlight.nearestEntityHit(
               world,
               origin,
               blocks.location(),
               searchArea,
               ArrowFlight.margin(tickCount),
-              leftOwner,
-              true);
-      if (!hits.isEmpty()) {
-        hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.location())));
-        ArrowFlight.Hit first = hits.getFirst();
-        points.add(first.location());
+              leftOwner);
+      if (hit != null) {
+        points.add(hit.location());
         return new Trajectory(
-            points,
-            Trajectory.End.ENTITY,
-            tickCount,
-            first.target(),
-            null,
-            first.location(),
-            velocity);
+            points, Trajectory.End.ENTITY, tickCount, hit.target(), null, hit.location(), velocity);
       }
 
       if (blocks.type() == WorldView.BlockClip.Type.BLOCK) {

@@ -1,7 +1,6 @@
 package ru.wilyfox.trajectory.sim;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -10,8 +9,8 @@ import java.util.List;
  *
  * <ol>
  *   <li>no acceleration and no gravity: the velocity never changes;
- *   <li>find the hit along the velocity ({@code ProjectileUtil.getHitResultOnMoveVector}, collider
- *       shapes, entity margin as for arrows);
+ *   <li>find the hit along the velocity ({@code ProjectileUtil.getHitResultOnMoveVector}: collider
+ *       shapes, then the nearest entity box inflated by {@code computeMargin});
  *   <li>move; a hit entity or a block ends the flight;
  *   <li>{@code life} grows by one; the rocket explodes once {@code life > lifetime}.
  * </ol>
@@ -69,26 +68,23 @@ public final class FireworkFlight {
 
       Aabb searchArea = box(pos).expandTowards(velocity).inflate(1.0);
       Vec3d origin = pos;
-      List<ArrowFlight.Hit> hits =
-          ArrowFlight.entityHits(
+      ArrowFlight.Hit hit =
+          ArrowFlight.nearestEntityHit(
               world,
               origin,
               blocks.location(),
               searchArea,
               ArrowFlight.margin(tickCount),
-              leftOwner,
-              true);
-      if (!hits.isEmpty()) {
-        hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.location())));
-        ArrowFlight.Hit first = hits.getFirst();
-        points.add(first.location());
+              leftOwner);
+      if (hit != null) {
+        points.add(hit.location());
         return new Trajectory(
             points,
             Trajectory.End.ENTITY,
             tickCount,
-            first.target(),
+            hit.target(),
             null,
-            first.location(),
+            hit.location(),
             velocity,
             Math.min(certain, points.size()));
       }

@@ -1,7 +1,6 @@
 package ru.wilyfox.trajectory.sim;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -62,21 +61,18 @@ public final class ThrowableFlight {
 
       Vec3d origin = pos;
       Aabb searchArea = box(pos).expandTowards(vel).inflate(1.0);
-      List<ArrowFlight.Hit> hits =
-          ArrowFlight.entityHits(
+      ArrowFlight.Hit hit =
+          ArrowFlight.nearestEntityHit(
               world,
               origin,
               blocks.location(),
               searchArea,
               ArrowFlight.margin(tickCount),
-              leftOwner,
-              true);
-      if (!hits.isEmpty()) {
-        hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.location())));
-        ArrowFlight.Hit first = hits.getFirst();
-        points.add(first.location());
+              leftOwner);
+      if (hit != null) {
+        points.add(hit.location());
         return new Trajectory(
-            points, Trajectory.End.ENTITY, tickCount, first.target(), null, first.location(), vel);
+            points, Trajectory.End.ENTITY, tickCount, hit.target(), null, hit.location(), vel);
       }
 
       if (blocks.type() == WorldView.BlockClip.Type.BLOCK) {
