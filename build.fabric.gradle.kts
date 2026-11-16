@@ -184,6 +184,8 @@ tasks.register<net.fabricmc.loom.task.prod.ClientProductionRunTask>("runReleaseS
         jvmArgs.add("-Dtrajectory.smoke.dev=true")
     }
     runDir = layout.buildDirectory.dir("run/releaseSmoke")
+    // Shot logs from an earlier run with the add-on would count as this run's.
+    doFirst { delete(layout.buildDirectory.dir("run/releaseSmoke/trajectory-reports")) }
 }
 
 // Optional local build additions (native fixtures), kept outside Git.

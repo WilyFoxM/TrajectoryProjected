@@ -1,4 +1,4 @@
-mod.version = "1.1.0-dev.1"
+mod.version = "1.1.0"
 mod.group = "ru.wilyfox.trajectory"
 mod.archives = "trajectory-projected"
 
