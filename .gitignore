@@ -10,7 +10,8 @@ bin/
 # Logo sources and drafts; the chosen icon ships from src/main/resources.
 /logo/
 
-# Local development settings
+# Local development settings and build additions
+/local.*.gradle
 .idea/
 .vscode/
 *.iml
