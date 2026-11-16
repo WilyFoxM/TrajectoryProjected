@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import ru.wilyfox.trajectory.sim.compat.VanillaRules;
 
 /**
  * {@code ProjectileUtil.getEntityHitResult} with a margin, as throwables, fireworks, the fishing
@@ -32,7 +33,10 @@ class NearestEntityHitTest {
     assertEquals(0.0, hit.location().x(), EPS);
     assertEquals(1.0, hit.location().y(), EPS);
     // Arrows report the entry into the real box instead.
-    ArrowFlight.Hit arrow = ArrowFlight.entityHits(world, from, to, AREA, MARGIN, false).getFirst();
+    ArrowFlight.Hit arrow =
+        ArrowFlight.entityHits(
+                world, from, to, AREA, MARGIN, false, VanillaRules.ARROW_MARGIN_HIT_ON_SURFACE)
+            .getFirst();
     assertEquals(-0.3, arrow.location().z(), EPS);
   }
 
@@ -50,7 +54,10 @@ class NearestEntityHitTest {
     assertNotNull(hit);
     assertEquals(0.5, hit.location().x(), EPS);
     assertEquals(-0.6, hit.location().z(), EPS);
-    assertTrue(ArrowFlight.entityHits(world, from, to, AREA, MARGIN, false).isEmpty());
+    assertTrue(
+        ArrowFlight.entityHits(
+                world, from, to, AREA, MARGIN, false, VanillaRules.ARROW_MARGIN_HIT_ON_SURFACE)
+            .isEmpty());
   }
 
   @Test

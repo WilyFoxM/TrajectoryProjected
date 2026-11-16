@@ -1,28 +1,20 @@
 package ru.wilyfox.trajectory.client;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.OptionalDouble;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import ru.wilyfox.trajectory.TrajectoryProjected;
+import ru.wilyfox.trajectory.compat.Gpu;
 
 /**
  * Drawing after the level has been rendered, onto the finished image, depth-tested against the main
@@ -89,54 +81,14 @@ public final class AfterLevel {
       return;
     }
     try {
-      RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-      GpuBufferSlice transforms =
-          RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(viewRotation));
+      RenderTarget target = Gpu.mainTarget();
+      GpuBufferSlice transforms = Gpu.writeTransform(new Matrix4f(viewRotation));
       for (Recorded r : RECORDED) {
-        draw(target, transforms, r);
+        Gpu.drawNow(
+            target, transforms, r.type(), builder -> r.geometry().render(r.pose(), builder));
       }
     } finally {
       RECORDED.clear();
-    }
-  }
-
-  private static void draw(RenderTarget target, GpuBufferSlice transforms, Recorded r) {
-    RenderType type = r.type();
-    try (ByteBufferBuilder bytes = new ByteBufferBuilder(type.format().getVertexSize() * 256)) {
-      BufferBuilder builder = new BufferBuilder(bytes, type.primitiveTopology(), type.format());
-      r.geometry().render(r.pose(), builder);
-      try (MeshData mesh = builder.build()) {
-        if (mesh == null) {
-          return;
-        }
-        int indexCount = mesh.drawState().indexCount();
-        RenderSystem.AutoStorageIndexBuffer indices =
-            RenderSystem.getSequentialBuffer(type.primitiveTopology());
-        GpuBuffer indexBuffer = indices.getBuffer(indexCount);
-        try (GpuBuffer vertices =
-            RenderSystem.getDevice()
-                .createBuffer(
-                    () -> "Trajectory Projected after shaders",
-                    GpuBuffer.USAGE_VERTEX,
-                    mesh.vertexBuffer())) {
-          try (RenderPass pass =
-              RenderSystem.getDevice()
-                  .createCommandEncoder()
-                  .createRenderPass(
-                      () -> "Trajectory Projected after shaders",
-                      target.getColorTextureView(),
-                      Optional.empty(),
-                      target.useDepth ? target.getDepthTextureView() : null,
-                      OptionalDouble.empty())) {
-            pass.setPipeline(type.pipeline());
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", transforms);
-            pass.setVertexBuffer(0, vertices.slice());
-            pass.setIndexBuffer(indexBuffer, indices.type());
-            pass.drawIndexed(indexCount, 1, 0, 0, 0);
-          }
-        }
-      }
     }
   }
 

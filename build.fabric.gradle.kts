@@ -57,6 +57,40 @@ val metadata =
 tasks.processResources {
     inputs.properties(metadata)
     filesMatching("fabric.mod.json") { expand(metadata) }
+
+    // 26.3 compiles shaders to SPIR-V: `#include` instead of `#moj_import`, and every stage input
+    // and output needs an explicit location. Sources keep the older form; this rewrites them.
+    if (sc.current.parsed >= "26.3") {
+        val locations =
+            mapOf(
+                // Vertex attributes, in the order of DefaultVertexFormat.POSITION_TEX_COLOR.
+                "Position" to 0, "UV0" to 1, "Color" to 2,
+                // Vertex outputs and fragment inputs.
+                "discCoord" to 0, "vertexColor" to 1,
+                // Fragment output.
+                "fragColor" to 0,
+            )
+        val declaration = Regex("""^(in|out) \w+ (\w+);""")
+        // Closures are not part of the task's up-to-date check; the table is.
+        inputs.property("shaderLocations", locations.toString())
+        filesMatching(listOf("assets/*/shaders/**/*.vsh", "assets/*/shaders/**/*.fsh")) {
+            val file = path
+            filter { line ->
+                val variable = declaration.find(line)?.groupValues?.get(2)
+                when {
+                    line.startsWith("#version") ->
+                        "$line\n#extension GL_ARB_separate_shader_objects : require"
+                    line.startsWith("#moj_import") -> line.replaceFirst("#moj_import", "#include")
+                    variable != null -> {
+                        val location =
+                            locations[variable] ?: error("No shader location for $variable in $file")
+                        "layout(location = $location) $line"
+                    }
+                    else -> line
+                }
+            }
+        }
+    }
 }
 
 tasks.jar {

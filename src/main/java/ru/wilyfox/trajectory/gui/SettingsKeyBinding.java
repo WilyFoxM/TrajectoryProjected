@@ -7,8 +7,8 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
 import ru.wilyfox.trajectory.TrajectoryProjected;
+import ru.wilyfox.trajectory.compat.Screens;
 import ru.wilyfox.trajectory.config.TrajectoryConfig;
 
 /**
@@ -24,15 +24,13 @@ public final class SettingsKeyBinding {
       KeyMappingHelper.registerKeyMapping(
           new KeyMapping(
               "key." + TrajectoryProjected.MOD_ID + ".open_settings",
-              InputConstants.Type.KEYSYM,
-              GLFW.GLFW_KEY_F7,
+              InputConstants.KEY_F7,
               CATEGORY));
 
   private static final KeyMapping TOGGLE =
       KeyMappingHelper.registerKeyMapping(
           new KeyMapping(
               "key." + TrajectoryProjected.MOD_ID + ".toggle",
-              InputConstants.Type.KEYSYM,
               InputConstants.UNKNOWN.getValue(),
               CATEGORY));
 
@@ -49,14 +47,14 @@ public final class SettingsKeyBinding {
           while (TOGGLE.consumeClick()) {
             toggle = !toggle;
           }
-          if (client.player == null || client.gui.screen() != null) {
+          if (client.player == null || Screens.current(client) != null) {
             return;
           }
           if (toggle) {
             toggle(client);
           }
           if (open) {
-            client.gui.setScreen(new TrajectoryScreen(null));
+            Screens.open(client, new TrajectoryScreen(null));
           }
         });
   }
@@ -69,9 +67,9 @@ public final class SettingsKeyBinding {
     } catch (RuntimeException failure) {
       TrajectoryProjected.LOGGER.error("Could not save settings", failure);
     }
-    client.gui.hud.setOverlayMessage(
+    Screens.overlayMessage(
+        client,
         Component.translatable(
-            SettingsCatalog.PREFIX + (config.enabled ? "toggled.on" : "toggled.off")),
-        false);
+            SettingsCatalog.PREFIX + (config.enabled ? "toggled.on" : "toggled.off")));
   }
 }
