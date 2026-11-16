@@ -14,7 +14,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Check formatting
-        run: ./gradlew spotlessCheck
+        run: ./gradlew formatCheck
   unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -25,19 +25,22 @@ jobs:
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
+      # Unit tests run in every Stonecutter node, against that Minecraft version.
       - name: Run unit tests
         run: |
           ./gradlew test
-          # Once test sources exist, the run must produce results.
-          if [ -d src/test/java ]; then compgen -G 'build/test-results/test/TEST-*.xml' > /dev/null; fi
+          # Once test sources exist, every node must produce results.
+          if [ -d src/test/java ]; then
+            for node in versions/*/; do compgen -G "${node}build/test-results/test/TEST-*.xml" > /dev/null; done
+          fi
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Unit-test-results
           path: |
-            build/test-results/test/*.xml
-            build/reports/tests/test/
+            versions/*/build/test-results/test/*.xml
+            versions/*/build/reports/tests/test/
           if-no-files-found: ignore
   build:
     runs-on: ubuntu-latest
@@ -49,8 +52,9 @@ jobs:
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
+      # Builds every Stonecutter node (Minecraft version).
       - run: ./gradlew build
       - uses: actions/upload-artifact@v4
         with:
           name: TrajectoryProjected
-          path: build/libs/*.jar
+          path: versions/*/build/libs/*.jar
