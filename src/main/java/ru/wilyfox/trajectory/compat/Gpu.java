@@ -4,6 +4,7 @@ import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -27,6 +28,23 @@ import org.joml.Vector4f;
 /** GPU calls whose shape differs between Minecraft versions. Render thread. */
 public final class Gpu {
   private static final String LABEL = "Trajectory Projected after level";
+
+  /**
+   * Passes where something already drawn is nearer than the fragment: the path behind terrain. Depth
+   * is reversed since 26.2 (cleared to 0, nearer is greater); before, nearer is smaller.
+   */
+  //? if >=26.2 {
+  public static final CompareOp BEHIND = CompareOp.LESS_THAN;
+  //?} else {
+  /*public static final CompareOp BEHIND = CompareOp.GREATER_THAN;
+  *///?}
+
+  /** The sign of a depth bias that moves a fragment towards the camera. */
+  //? if >=26.2 {
+  public static final float TOWARDS_CAMERA = 1.0F;
+  //?} else {
+  /*public static final float TOWARDS_CAMERA = -1.0F;
+  *///?}
 
   private Gpu() {}
 

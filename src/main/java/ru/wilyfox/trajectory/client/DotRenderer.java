@@ -55,13 +55,13 @@ final class DotRenderer {
           .withCull(false)
           .build();
 
-  /** Passes only where terrain is in front of the dot (the depth buffer is reversed). */
+  /** Passes only where terrain is in front of the dot. */
   private static final RenderPipeline HIDDEN =
       Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot_hidden"))
-          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withDepthStencilState(new DepthStencilState(Gpu.BEHIND, false))
           .withCull(false)
           .build();
 
@@ -79,7 +79,7 @@ final class DotRenderer {
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/cross_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/cross_hidden"))
-          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withDepthStencilState(new DepthStencilState(Gpu.BEHIND, false))
           .withCull(false)
           .build();
 
@@ -141,7 +141,8 @@ final class DotRenderer {
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/zone"))
           .withDepthStencilState(
-              new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false, 2.0F, 0.0F))
+              new DepthStencilState(
+                  DepthStencilState.DEFAULT.depthTest(), false, Gpu.TOWARDS_CAMERA * 2.0F, 0.0F))
           .withCull(false)
           .build();
 
@@ -172,7 +173,7 @@ final class DotRenderer {
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/bobber_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/bobber_hidden"))
-          .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
+          .withDepthStencilState(new DepthStencilState(Gpu.BEHIND, false))
           .withCull(false)
           .build();
 
