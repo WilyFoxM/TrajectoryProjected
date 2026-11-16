@@ -203,5 +203,38 @@ public final class ArrowFlight {
     return hits;
   }
 
+  /**
+   * {@code ProjectileUtil.getEntityHitResult(level, source, from, to, area, matching, margin)},
+   * reached through {@code getHitResultOnMoveVector} by throwables, fireworks, the fishing hook and
+   * the wind charge: each target box inflated by the margin is clipped by the segment, and the hit
+   * nearest to {@code from} wins, the earlier target on a tie. The location is where the segment
+   * enters the inflated box; unlike arrows there is no ray towards the center and no projection
+   * onto the real box.
+   *
+   * @return the nearest hit, or {@code null} if the segment touches no target
+   */
+  static Hit nearestEntityHit(
+      WorldView world, Vec3d from, Vec3d to, Aabb area, float margin, boolean leftOwner) {
+    double nearest = Double.MAX_VALUE;
+    Hit hit = null;
+    for (WorldView.EntityTarget target : world.entities(area)) {
+      if (target.shooterGroup() && !leftOwner) {
+        continue;
+      }
+
+      Vec3d location = target.box().inflate(margin).clip(from, to);
+      if (location == null) {
+        continue;
+      }
+
+      double distance = from.distanceToSqr(location);
+      if (distance < nearest) {
+        nearest = distance;
+        hit = new Hit(target, location);
+      }
+    }
+    return hit;
+  }
+
   record Hit(WorldView.EntityTarget target, Vec3d location) {}
 }

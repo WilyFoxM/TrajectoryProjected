@@ -1,7 +1,6 @@
 package ru.wilyfox.trajectory.sim;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -97,21 +96,13 @@ public final class FishingHookFlight {
         }
         Vec3d origin = pos;
         Aabb area = box(pos).expandTowards(vel).inflate(1.0);
-        List<ArrowFlight.Hit> hits =
-            ArrowFlight.entityHits(
+        ArrowFlight.Hit hit =
+            ArrowFlight.nearestEntityHit(
                 world, origin, blocks.location(), area, ArrowFlight.margin(tickCount), leftOwner);
-        if (!hits.isEmpty()) {
-          hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.target().position())));
-          ArrowFlight.Hit first = hits.getFirst();
-          points.add(first.location());
+        if (hit != null) {
+          points.add(hit.location());
           return new Trajectory(
-              points,
-              Trajectory.End.ENTITY,
-              tickCount,
-              first.target(),
-              null,
-              first.location(),
-              vel);
+              points, Trajectory.End.ENTITY, tickCount, hit.target(), null, hit.location(), vel);
         }
         if (blocks.type() == WorldView.BlockClip.Type.BLOCK) {
           // HitResult.distanceTo returns the squared distance: close to a block the hook slows down
