@@ -3,6 +3,7 @@ package ru.wilyfox.trajectory.sim;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import ru.wilyfox.trajectory.sim.compat.VanillaRules;
 
 /**
  * Flight of a fishing hook, tick by tick, in the order of vanilla 26.2 {@code FishingHook.tick}.
@@ -17,7 +18,7 @@ import java.util.List;
  *       entity is hooked, a block sets the speed to the squared distance to it ({@code onHitBlock}
  *       with {@code HitResult.distanceTo}, which is squared);
  *   <li>bobbing: horizontal velocity × 0.9, and a random pull towards the water surface;
- *   <li>gravity 0.03 out of water and off the ground;
+ *   <li>gravity ({@link VanillaRules#FISHING_HOOK_GRAVITY}) out of water and off the ground;
  *   <li>{@code move(SELF)} with collisions; in flight, ground or a wall sets the velocity to zero;
  *   <li>velocity × 0.92.
  * </ol>
@@ -32,7 +33,7 @@ public final class FishingHookFlight {
   /** {@code EntityTypes.FISHING_BOBBER}: {@code sized(0.25F, 0.25F)}. */
   public static final float SIZE = 0.25F;
 
-  public static final double GRAVITY = 0.03;
+  public static final double GRAVITY = VanillaRules.FISHING_HOOK_GRAVITY;
 
   public static final double INERTIA = 0.92;
 
@@ -99,7 +100,13 @@ public final class FishingHookFlight {
         Aabb area = box(pos).expandTowards(vel).inflate(1.0);
         List<ArrowFlight.Hit> hits =
             ArrowFlight.entityHits(
-                world, origin, blocks.location(), area, ArrowFlight.margin(tickCount), leftOwner);
+                world,
+                origin,
+                blocks.location(),
+                area,
+                ArrowFlight.margin(tickCount),
+                leftOwner,
+                true);
         if (!hits.isEmpty()) {
           hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.target().position())));
           ArrowFlight.Hit first = hits.getFirst();

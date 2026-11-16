@@ -1,5 +1,6 @@
 package ru.wilyfox.trajectory.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -10,11 +11,13 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import ru.wilyfox.trajectory.TrajectoryProjected;
+import ru.wilyfox.trajectory.compat.Screens;
 import ru.wilyfox.trajectory.config.TrajectoryConfig;
 
 /** Standalone settings: categories, global search and clipped, accessible controls. */
@@ -113,7 +116,7 @@ public final class TrajectoryScreen extends Screen {
             Component.translatable(SettingsCatalog.PREFIX + "reset"),
             () -> {
               finishDrags();
-              minecraft.gui.setScreen(new ResetConfirmation());
+              Screens.open(minecraft, new ResetConfirmation());
             },
             () -> false));
     done =
@@ -320,7 +323,7 @@ public final class TrajectoryScreen extends Screen {
 
   @Override
   public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-    if (event.button() == 0
+    if (event.button() == InputConstants.MOUSE_BUTTON_LEFT
         && maxScroll > 0
         && event.x() >= contentX + contentWidth - 8
         && event.x() <= contentX + contentWidth
@@ -369,17 +372,25 @@ public final class TrajectoryScreen extends Screen {
 
   @Override
   public boolean mouseReleased(MouseButtonEvent event) {
-    if (event.button() == 0) {
+    if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
       scrollbarDragging = false;
       finishDrags();
     }
     return super.mouseReleased(event);
   }
 
+  /** The focused component at the end of {@code path}; the same walk works in every 26.x. */
+  private static GuiEventListener leaf(ComponentPath path) {
+    while (path instanceof ComponentPath.Path node) {
+      path = node.childPath();
+    }
+    return path.component();
+  }
+
   @Override
   protected void changeFocus(ComponentPath path) {
     super.changeFocus(path);
-    if (path != null && path.leafComponent() instanceof SettingRow row) {
+    if (path != null && leaf(path) instanceof SettingRow row) {
       if (row.getY() < viewportTop) scroll -= viewportTop - row.getY();
       if (row.getBottom() > viewportBottom) scroll += row.getBottom() - viewportBottom;
       positionRows();
@@ -388,7 +399,7 @@ public final class TrajectoryScreen extends Screen {
 
   @Override
   public boolean keyPressed(KeyEvent event) {
-    if (event.hasControlDown() && event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_F) {
+    if (event.hasControlDown() && event.key() == InputConstants.KEY_F) {
       setFocused(search);
       return true;
     }
@@ -397,12 +408,11 @@ public final class TrajectoryScreen extends Screen {
       return true;
     }
     if (getFocused() != search
-        && (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN
-            || event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP)) {
+        && (event.key() == InputConstants.KEY_PAGEDOWN
+            || event.key() == InputConstants.KEY_PAGEUP)) {
       finishDrags();
       scroll +=
-          (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1)
-              * (viewportBottom - viewportTop);
+          (event.key() == InputConstants.KEY_PAGEDOWN ? 1 : -1) * (viewportBottom - viewportTop);
       positionRows();
       return true;
     }
@@ -425,7 +435,7 @@ public final class TrajectoryScreen extends Screen {
   @Override
   public void onClose() {
     finishDrags();
-    if (saveChanges()) minecraft.gui.setScreen(parent);
+    if (saveChanges()) Screens.open(minecraft, parent);
   }
 
   private final class ResetConfirmation extends Screen {
@@ -487,7 +497,7 @@ public final class TrajectoryScreen extends Screen {
 
     @Override
     public void onClose() {
-      minecraft.gui.setScreen(TrajectoryScreen.this);
+      Screens.open(minecraft, TrajectoryScreen.this);
     }
   }
 }

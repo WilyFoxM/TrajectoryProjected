@@ -1,8 +1,18 @@
-mod.version = "1.0.0"
+mod.version = "1.1.0-dev.1"
 mod.group = "ru.wilyfox.trajectory"
 mod.archives = "trajectory-projected"
 
 deps.fabric_loader = "0.19.3"
+
+["26.1.2"]
+# Built against 26.1.2; the same jar runs on 26.1 and 26.1.1.
+mod.mc_label = "26.1.x"
+mod.mc_compat = "~26.1"
+deps.fabric_api = "0.155.3+26.1.2"
+# The newest Fabric API for 26.1, so the jar loads there.
+deps.fabric_api_min = "0.145.1"
+deps.sodium = "mc26.1.2-0.9.2-fabric"
+deps.iris = "1.11.4+26.1-fabric"
 
 ["26.2"]
 # Shown in the jar's version and name.
@@ -15,3 +25,11 @@ deps.fabric_api_min = "0.161.0"
 # Optional rendering mods for local runs only (-PwithSodium, -PwithIris).
 deps.sodium = "mc26.2-0.9.2-fabric"
 deps.iris = "1.11.4+26.2-fabric"
+
+["26.3"]
+mod.mc_label = "26.3"
+mod.mc_compat = "~26.3"
+deps.fabric_api = "0.166.2+26.3"
+deps.fabric_api_min = "0.166.2"
+deps.sodium = "mc26.3-0.9.2-fabric"
+deps.iris = "1.11.7+26.3-fabric"

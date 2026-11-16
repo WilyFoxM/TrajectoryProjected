@@ -3,6 +3,7 @@ package ru.wilyfox.trajectory.sim;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import ru.wilyfox.trajectory.sim.compat.VanillaRules;
 
 /**
  * Flight of an arrow or a trident, tick by tick, in the order of vanilla 26.2 {@code
@@ -89,7 +90,14 @@ public final class ArrowFlight {
 
       Aabb searchArea = box(pos).expandTowards(vel).inflate(1.0);
       List<Hit> hits =
-          entityHits(world, origin, blocks.location(), searchArea, margin(tickCount), leftOwner);
+          entityHits(
+              world,
+              origin,
+              blocks.location(),
+              searchArea,
+              margin(tickCount),
+              leftOwner,
+              VanillaRules.ARROW_MARGIN_HIT_ON_SURFACE);
       if (!hits.isEmpty()) {
         hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.target().position())));
         Hit first = hits.getFirst();
@@ -163,10 +171,18 @@ public final class ArrowFlight {
 
   /**
    * {@code ProjectileUtil.getManyEntityHitResult} with {@code includeFromEntity = false}: exact box
-   * hits, and hits within the margin that are confirmed by a ray towards the box center.
+   * hits, and hits within the margin that are confirmed by a ray towards the box center. A margin
+   * hit lands on the box surface when {@code projectSurface} is set, else where the ray enters the
+   * inflated box.
    */
   static List<Hit> entityHits(
-      WorldView world, Vec3d from, Vec3d to, Aabb area, float margin, boolean leftOwner) {
+      WorldView world,
+      Vec3d from,
+      Vec3d to,
+      Aabb area,
+      float margin,
+      boolean leftOwner,
+      boolean projectSurface) {
     List<Hit> hits = new ArrayList<>();
     for (WorldView.EntityTarget target : world.entities(area)) {
       if (target.shooterGroup() && !leftOwner) {
@@ -197,7 +213,7 @@ public final class ArrowFlight {
 
       Vec3d surface = box.clip(outside, towards);
       if (surface != null) {
-        hits.add(new Hit(target, surface));
+        hits.add(new Hit(target, projectSurface ? surface : outside));
       }
     }
     return hits;

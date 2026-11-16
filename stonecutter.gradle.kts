@@ -9,6 +9,22 @@ stonecutter parameters {
     properties {
         tags(current.version)
     }
+
+    // 26.3 moved the GPU API from com.mojang.blaze3d into com.mojang.renderpearl.api. Sources keep
+    // the 26.2 names; the swap covers imports and mixin descriptors alike.
+    val renderpearl = current.parsed >= "26.3"
+    for ((old, new) in listOf(
+        "com.mojang.blaze3d.buffers.GpuBuffer" to "com.mojang.renderpearl.api.buffers.GpuBuffer",
+        "com.mojang.blaze3d.systems.RenderPass" to "com.mojang.renderpearl.api.commands.RenderPass",
+        "com.mojang.blaze3d.pipeline.RenderPipeline" to "com.mojang.renderpearl.api.pipeline.RenderPipeline",
+        "com.mojang.blaze3d.pipeline.DepthStencilState" to "com.mojang.renderpearl.api.pipeline.DepthStencilState",
+        "com.mojang.blaze3d.platform.CompareOp" to "com.mojang.renderpearl.api.pipeline.CompareOp",
+    )) {
+        replacements {
+            string(renderpearl) { replace(old, new) }
+            string(renderpearl) { replace(old.replace('.', '/'), new.replace('.', '/')) }
+        }
+    }
 }
 
 // Formatting: google-java-format over every Java source. Spotless is not used, because it
@@ -33,7 +49,7 @@ val javaSources = fileTree(rootDir) {
     include("src/**/*.java")
     // Version seams hold Stonecutter conditions (`//? if`), which google-java-format would turn
     // into plain comments (`// ? if`).
-    exclude("src/main/java/ru/wilyfox/trajectory/compat/**")
+    exclude("src/main/java/ru/wilyfox/trajectory/**/compat/**")
 }
 
 fun registerFormat(name: String, description: String, vararg mode: String) =

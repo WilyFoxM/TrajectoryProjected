@@ -18,7 +18,9 @@ plugins {
 stonecutter {
     create(rootProject) {
         // One node per Minecraft version, all built by build.fabric.gradle.kts.
+        version("26.1.2", "26.1.2").buildscript("build.fabric.gradle.kts")
         version("26.2", "26.2").buildscript("build.fabric.gradle.kts")
+        version("26.3", "26.3").buildscript("build.fabric.gradle.kts")
         vcsVersion = "26.2"
     }
 }

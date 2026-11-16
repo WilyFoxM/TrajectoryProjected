@@ -11,6 +11,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ChargedProjectiles;
 import net.minecraft.world.item.component.Fireworks;
@@ -333,7 +334,7 @@ public final class ShotPreview {
     if (shooter == null) {
       return null;
     }
-    List<ItemStack> items = charged.itemCopies();
+    List<ItemStack> items = charged.items().stream().map(ItemStackTemplate::create).toList();
     List<CrossbowShot.Charge> charges = new ArrayList<>(items.size());
     for (ItemStack item : items) {
       charges.add(

@@ -1,21 +1,30 @@
-package ru.wilyfox.trajectory.mixin;
+package ru.wilyfox.trajectory.mixin.compat;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.Hud;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import ru.wilyfox.trajectory.client.CrosshairTurn;
+//? if >=26.2 {
+import net.minecraft.client.gui.Hud;
+//?} else {
+/*import net.minecraft.client.gui.Gui;
+*///?}
 
 /**
  * Rotates the crosshair sprite around its center while a drawn bow would hit a living entity. Only
- * the crosshair itself turns; the attack indicator below it is drawn by later calls.
+ * the crosshair itself turns; the attack indicator below it is drawn by later calls. The crosshair
+ * moved from {@code Gui} to {@code Hud} in 26.2.
  */
+//? if >=26.2 {
 @Mixin(Hud.class)
-abstract class HudCrosshairMixin {
+//?} else {
+/*@Mixin(Gui.class)
+*///?}
+abstract class CrosshairMixin {
   @WrapOperation(
       method = "extractCrosshair",
       at =

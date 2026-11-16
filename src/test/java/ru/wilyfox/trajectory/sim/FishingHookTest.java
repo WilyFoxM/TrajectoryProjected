@@ -48,9 +48,9 @@ class FishingHookTest {
     Vec3d v = new Vec3d(0.0, 0.2, 0.5);
     Trajectory path = HOOK.simulate(spawn, v, world);
     List<Vec3d> p = path.points();
-    Vec3d first = v.add(0.0, -0.03, 0.0);
+    Vec3d first = v.add(0.0, -FishingHookFlight.GRAVITY, 0.0);
     assertEquals(0.0, Math.sqrt(p.get(1).distanceToSqr(spawn.add(first))), 1.0e-12);
-    Vec3d second = first.scale(0.92).add(0.0, -0.03, 0.0);
+    Vec3d second = first.scale(0.92).add(0.0, -FishingHookFlight.GRAVITY, 0.0);
     assertEquals(0.0, Math.sqrt(p.get(2).distanceToSqr(p.get(1).add(second))), 1.0e-12);
   }
 
@@ -59,10 +59,12 @@ class FishingHookTest {
     TestWorld world = TestWorld.floorAt(64.0);
     Trajectory path = HOOK.simulate(new Vec3d(0.5, 64.5, 0.5), new Vec3d(0, -0.9, 0), world);
     List<Vec3d> p = path.points();
-    // Ray meets the floor 0.5 below: speed 0.25, then gravity: down 0.28, short of the floor.
-    assertEquals(64.22, p.get(1).y(), 1.0e-9);
-    // Next: 0.2576 down along the ray meets the floor 0.22 below: speed 0.0484, then gravity.
-    assertEquals(64.22 - 0.0484 - 0.03, p.get(2).y(), 1.0e-9);
+    // Ray meets the floor 0.5 below: speed 0.25, then gravity (0.03): short of the floor.
+    double y1 = 64.5 - 0.25 - FishingHookFlight.GRAVITY;
+    assertEquals(y1, p.get(1).y(), 1.0e-9);
+    // Next: the ray meets the floor about 0.22 below: speed is that squared, then gravity.
+    double gap = y1 - 64.0;
+    assertEquals(y1 - gap * gap - FishingHookFlight.GRAVITY, p.get(2).y(), 1.0e-9);
   }
 
   @Test

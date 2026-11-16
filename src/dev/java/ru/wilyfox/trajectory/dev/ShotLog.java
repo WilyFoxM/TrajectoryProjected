@@ -14,7 +14,6 @@ import java.util.Locale;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +61,7 @@ final class ShotLog {
   }
 
   static void entityLoaded(Entity entity) {
-    if (pending == null || entity.getType() != EntityTypes.ARROW) {
+    if (pending == null || !(entity instanceof Arrow)) {
       return;
     }
     Minecraft minecraft = Minecraft.getInstance();

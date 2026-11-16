@@ -62,7 +62,8 @@ public final class WindChargeFlight {
               blocks.location(),
               searchArea,
               ArrowFlight.margin(tickCount),
-              leftOwner);
+              leftOwner,
+              true);
       if (!hits.isEmpty()) {
         hits.sort(Comparator.comparingDouble(h -> origin.distanceToSqr(h.location())));
         ArrowFlight.Hit first = hits.getFirst();

@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/WilyFoxM/TrajectoryProjected/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/WilyFoxM/TrajectoryProjected/build.yml?branch=main&label=build&labelColor=2a2b2a" alt="Build"></a>
-  <img src="https://img.shields.io/badge/Minecraft-26.2-ef6351?labelColor=2a2b2a" alt="Minecraft 26.2">
+  <img src="https://img.shields.io/badge/Minecraft-26.1%20%7C%2026.2%20%7C%2026.3-ef6351?labelColor=2a2b2a" alt="Minecraft 26.1 | 26.2 | 26.3">
   <img src="https://img.shields.io/badge/loader-Fabric-ef6351?labelColor=2a2b2a" alt="Fabric">
   <img src="https://img.shields.io/badge/Java-25-ef6351?labelColor=2a2b2a" alt="Java 25">
   <img src="https://img.shields.io/badge/license-MIT-ef6351?labelColor=2a2b2a" alt="MIT">
@@ -14,7 +14,7 @@
 
 **See where it lands, and how far the spread can carry it.**
 
-Trajectory Projected is a client-side mod for Minecraft **26.2 / Fabric** that
+Trajectory Projected is a client-side mod for Minecraft **26.1–26.3 / Fabric** that
 shows where your bow, crossbow, trident or thrown item will land. The flight is
 simulated tick by tick in the order vanilla uses, from the same position and
 rotation the server will fire with, so the line follows the real arrow rather
@@ -77,10 +77,17 @@ casts; see [Accuracy](#accuracy).
 
 ## Getting started
 
-Install **Fabric Loader 0.19.3+**, **Fabric API 0.161.0+26.2** and **Java 25**,
-then place the Trajectory Projected JAR from
+Install **Fabric Loader 0.19.3+**, **Fabric API** and **Java 25**, then place the
+Trajectory Projected JAR for your Minecraft version from
 [Releases](https://github.com/WilyFoxM/TrajectoryProjected/releases) in your
-Minecraft instance's `mods` folder.
+Minecraft instance's `mods` folder. Each version has its own file:
+
+| File | Minecraft | Fabric API |
+| --- | --- | --- |
+| `+26.1.x` | 26.1, 26.1.1, 26.1.2 | 0.145.1 or newer |
+| `+26.2` | 26.2 | 0.161.0 or newer |
+| `+26.3` | 26.3 | 0.166.2 or newer |
+
 Nothing needs to be installed on the server.
 
 Press **F7** in-game to open settings. A key to turn trajectories on and off can be
@@ -94,13 +101,17 @@ and Russian translations are included.
 
 ## Compatibility
 
-Built for Minecraft **26.2** with Fabric. I play with **Sodium** (0.9.2 tested).
+Built for Minecraft **26.1.x, 26.2 and 26.3** with Fabric. I play on 26.2 with **Sodium** (0.9.2 tested).
 
 With **Iris** (1.11.4 tested) and a shader pack active, the line, markers and spread
 zone are drawn over the pack's finished image, so they look the same as without
 shaders and stay sharp; they are not lit or fogged by the pack. Checked with
 Complementary Reimagined r5.8.1 and BSL v10.1.8. Without a pack, Iris changes
 nothing.
+
+On 26.3 the mod has been checked in a local client run with Sodium 0.9.2. Iris 1.11.7 does not
+start on 26.3 even without this mod, so shaders there are untested. On 26.1.x the line over a
+Complementary pack has been checked with Iris 1.11.4.
 
 Other rendering mods have not been tested.
 
@@ -114,6 +125,10 @@ The simulation follows vanilla's own code: the launch, the order of operations i
 each tick, water, entity hitboxes and the random spread. Unit tests compare it with
 vanilla's formulas, which says nothing about the game itself, so I also measured it
 in game.
+
+The measurements below were made on 26.2. Each version's file follows its own vanilla,
+and the unit tests run against each version's code; 26.1.x and 26.3 have not been
+measured in game separately.
 
 I fired 334 logged bow shots and compared each prediction with the launch the server
 sent and with where the arrow stopped. The first 30 partial draws on the server

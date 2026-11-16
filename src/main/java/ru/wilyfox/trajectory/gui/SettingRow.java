@@ -137,7 +137,7 @@ final class SettingRow extends Button {
 
   @Override
   protected boolean isValidClickButton(MouseButtonInfo button) {
-    return button.button() == 0;
+    return button.button() == InputConstants.MOUSE_BUTTON_LEFT;
   }
 
   @Override
@@ -150,7 +150,13 @@ final class SettingRow extends Button {
       dragRemainder = 0;
       return;
     }
-    option.change().accept(input instanceof MouseButtonEvent mouse && mouse.button() == 1 ? -1 : 1);
+    option
+        .change()
+        .accept(
+            input instanceof MouseButtonEvent mouse
+                    && mouse.button() == InputConstants.MOUSE_BUTTON_RIGHT
+                ? -1
+                : 1);
     owner.saveChanges();
     refresh();
   }
@@ -159,10 +165,7 @@ final class SettingRow extends Button {
   protected void onDrag(MouseButtonEvent event, double dx, double dy) {
     if (!dragging) return;
     // MouseHandler retains the mouse-down modifiers throughout the drag.
-    var window = Minecraft.getInstance().getWindow();
-    boolean fine =
-        InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
-            || InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT);
+    boolean fine = Minecraft.getInstance().hasShiftDown();
     dragRemainder += (event.x() - dragX) / (fine ? 12 : 3);
     dragX = event.x();
     int steps = (int) dragRemainder;

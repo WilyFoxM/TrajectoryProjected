@@ -3,7 +3,6 @@ package ru.wilyfox.trajectory.client;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.util.ArrayList;
@@ -27,6 +26,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
+import ru.wilyfox.trajectory.compat.Gpu;
 import ru.wilyfox.trajectory.config.TrajectoryConfig;
 import ru.wilyfox.trajectory.sim.Aabb;
 import ru.wilyfox.trajectory.sim.Face;
@@ -48,41 +48,37 @@ final class DotRenderer {
   private static final String MOD_ID = "trajectory_projected";
 
   private static final RenderPipeline VISIBLE =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withCull(false)
           .build();
 
   /** Passes only where terrain is in front of the dot (the depth buffer is reversed). */
   private static final RenderPipeline HIDDEN =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot_hidden"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
           .withCull(false)
           .build();
 
   /** The hit marker on a living target: an anti-aliased cross instead of a disc. */
   private static final RenderPipeline CROSS =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/cross"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/cross"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withCull(false)
           .build();
 
   private static final RenderPipeline CROSS_HIDDEN =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/cross_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/cross_hidden"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
           .withCull(false)
           .build();
@@ -93,21 +89,19 @@ final class DotRenderer {
    * outlined) is chosen per dot from a ray to the real path point it stands for.
    */
   private static final RenderPipeline OVERLAY =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_overlay"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
           .withCull(false)
           .build();
 
   private static final RenderPipeline OVERLAY_HIDDEN =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/dots_overlay_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot_hidden"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
           .withCull(false)
           .build();
@@ -124,11 +118,10 @@ final class DotRenderer {
 
   /** The spread zone on block faces: a projected decal, depth-tested, never written to depth. */
   private static final RenderPipeline ZONE =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/zone"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/zone"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withCull(false)
           .build();
 
@@ -143,11 +136,10 @@ final class DotRenderer {
    * depth test frame by frame. A bias following the surface's slope covers that shift.
    */
   private static final RenderPipeline ZONE_OVER_SHADERS =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/zone_over_shaders"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/zone"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(
               new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false, 2.0F, 0.0F))
           .withCull(false)
@@ -168,20 +160,18 @@ final class DotRenderer {
 
   /** The hook of a fishing rod where it will land: a ghost of the bobber. */
   private static final RenderPipeline BOBBER =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/bobber"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/bobber"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withCull(false)
           .build();
 
   private static final RenderPipeline BOBBER_HIDDEN =
-      RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+      Gpu.texColorQuads(RenderPipelines.DEBUG_FILLED_SNIPPET)
           .withLocation(Identifier.fromNamespaceAndPath(MOD_ID, "pipeline/bobber_hidden"))
           .withVertexShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/dot"))
           .withFragmentShader(Identifier.fromNamespaceAndPath(MOD_ID, "core/bobber_hidden"))
-          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
           .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN, false))
           .withCull(false)
           .build();

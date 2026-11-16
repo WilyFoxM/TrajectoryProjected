@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import ru.wilyfox.trajectory.sim.compat.VanillaRules;
 
 class ArrowFlightTest {
   private static final Vec3d SPAWN = new Vec3d(0.0, 65.52, 0.0);
@@ -107,6 +108,14 @@ class ArrowFlightTest {
     Trajectory t = ArrowFlight.simulate(new Vec3d(0.4, 66.5, 0.0), new Vec3d(0, 0, 3), world, 12);
     assertEquals(Trajectory.End.ENTITY, t.end());
     assertTrue(t.ticks() >= 8);
+    if (VanillaRules.ARROW_MARGIN_HIT_ON_SURFACE) {
+      // Projected onto the box, whose side is at x = 0.3.
+      assertTrue(t.last().x() <= 0.3 + 1.0E-9, "on the box: " + t.last());
+    } else {
+      // Left where the path enters the inflated box, still 0.1 beside the side.
+      assertEquals(0.4, t.last().x(), 1.0E-9);
+      assertTrue(t.last().z() < 26.0 - 0.3, "before the box: " + t.last());
+    }
   }
 
   @Test
